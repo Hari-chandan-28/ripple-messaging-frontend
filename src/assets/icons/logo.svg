@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 256 256"
+     width="256"
+     height="256"
+     fill="none">
+<g stroke="currentColor"  stroke-width="29"
+>
+    <!-- Top horizontal -->
+    <path
+            d="M50 50 H150"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+    <!-- Right rounded part -->
+    <path
+            d="M150 50
+           A40 40 0 0 1 150 130"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+    <!-- Middle horizontal -->
+    <path
+            d="M50 130 H150"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+    <!-- Left vertical -->
+    <path
+            d="M50 130 V205"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+    <!-- Diagonal -->
+    <path
+            d="M50 50 L185 205"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+
+</g>
+
+</svg>
