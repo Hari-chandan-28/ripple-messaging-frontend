@@ -1,14 +1,8 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
-import LoginPage from "./LoginPage.jsx";
+import Logo from "../assets/icons/logo.svg?react";
 
-// ============================================================
-// AUTH PAGES — SignupPage, LoginPage, ProfileSetupPage
-// Copy each component into its respective file in src/pages/
-// ============================================================
-
-// ─── SHARED DESIGN TOKENS ────────────────────────────────────
 const C = {
     bg: "#f8f4f0",
     primary: "#1e3a2b",
@@ -19,7 +13,7 @@ const C = {
 const faro = "'Faro', sans-serif";
 const inter = "'Inter', sans-serif";
 
-// ─── SHARED SVG SKETCHY ELEMENTS ─────────────────────────────
+// SVG elements
 const Swoosh = ({ color = C.accent, style = {} }) => (
     <svg viewBox="0 0 200 50" fill="none" style={{ position: "absolute", pointerEvents: "none", ...style }}>
         <path d="M 8 35 Q 60 8 120 28 Q 160 42 192 18" stroke={color} strokeWidth="4" strokeLinecap="round" />
@@ -51,12 +45,11 @@ const DotGrid = ({ color = C.primary, style = {} }) => (
 const WaveLine = ({ color = C.accent, style = {} }) => (
     <svg viewBox="0 0 300 30" fill="none" style={{ position: "absolute", pointerEvents: "none", ...style }}>
         <path d="M 0 15 Q 37 5 75 15 Q 112 25 150 15 Q 187 5 225 15 Q 262 25 300 15"
-              stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+              stroke={color} strokeWidth="3" strokeLinecap="round" />
     </svg>
 );
 
-// ─── SHARED STYLES INJECTED ONCE ─────────────────────────────
-const AuthStyles = () => (
+const PageStyles = () => (
     <style>{`
     .auth-input {
       width: 100%;
@@ -94,20 +87,38 @@ const AuthStyles = () => (
       transform: translateY(-2px);
       box-shadow: 0 8px 24px rgba(30,58,43,0.3);
     }
-    .auth-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-    .auth-link {
-      color: ${C.primary};
+    .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .upload-btn {
+      padding: 8px 18px;
+      background: ${C.primary};
+      color: ${C.accent};
+      border: none;
+      border-radius: 100px;
+      font-size: 13px;
       font-weight: 600;
+      font-family: ${inter};
       cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      transition: opacity 0.15s;
+      transition: background 0.2s, transform 0.15s;
     }
-    .auth-link:hover { opacity: 0.65; }
+    .upload-btn:hover {
+      background: #2d5540;
+      transform: translateY(-1px);
+    }
+    .remove-btn {
+      padding: 8px 18px;
+      background: transparent;
+      color: ${C.primary};
+      border: 1.5px solid ${C.primary};
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: ${inter};
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .remove-btn:hover {
+      background: rgba(30,58,43,0.08);
+    }
     .toggle-track {
       width: 48px; height: 26px;
       border-radius: 100px;
@@ -127,44 +138,81 @@ const AuthStyles = () => (
     }
   `}</style>
 );
+const LogoMark = ({ onClick }) => (
+    <div
+        onClick={onClick}
+        style={{
+            textAlign: "center",
+            marginBottom: 28,
+            cursor: "pointer", // Shows hand cursor
+        }}
+    >
+        <div
+            style={{
+                width: 52,
+                height: 52,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 4px",
+            }}
+        >
+            <Logo
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    color: C.primary,
+                }}
+            />
+        </div>
 
-// ─── LOGO MARK ────────────────────────────────────────────────
-const LogoMark = () => (
-    <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{
-            width: 52, height: 52, background: C.primary, borderRadius: "50%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 12px",
-            color: C.accent, fontWeight: 900, fontSize: 22, fontFamily: faro,
-        }}>R</div>
-        <span style={{ fontSize: 28, fontWeight: 900, fontFamily: faro, letterSpacing: "-1px", color: C.primary }}>Ripple^</span>
+        <span
+            style={{
+                fontSize: 28,
+                fontWeight: 900,
+                fontFamily: faro,
+                letterSpacing: "-1px",
+                color: C.primary,
+            }}
+        >
+            Ripple^
+        </span>
     </div>
 );
 
-// ─── AUTH CARD WRAPPER ────────────────────────────────────────
-const AuthCard = ({ children }) => (
-    <div style={{
-        background: C.accent,
-        borderRadius: 32,
-        padding: "40px 40px 36px",
-        border: `2.5px solid ${C.primary}`,
-        width: "100%",
-        maxWidth: 420,
-        boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
-        position: "relative",
-    }}>
-        {children}
-    </div>
-);
-
-
-export function ProfileSetupPage() {
-    const [form, setForm] = useState({ name: "", bio: "", profilePic: "", isPrivate: false });
+export default function ProfileSetupPage() {
+    const [form, setForm] = useState({ name: "", bio: "", isPrivate: false });
+    const [preview, setPreview] = useState(null);   // base64 or object URL for display
+    const [imageFile, setImageFile] = useState(null); // actual File object
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const fileInputRef = useRef(null);
     const navigate = useNavigate();
 
     const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+    // When user picks a file — create a local preview URL
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            setError("Please select an image file.");
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setError("Image must be under 5MB.");
+            return;
+        }
+        setError("");
+        setImageFile(file);
+        setPreview(URL.createObjectURL(file));
+    };
+
+    const handleRemoveImage = () => {
+        setPreview(null);
+        setImageFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
 
     const handleSubmit = async () => {
         setError("");
@@ -174,10 +222,15 @@ export function ProfileSetupPage() {
         }
         setLoading(true);
         try {
+            // For now send null for profilePic — wire up file upload endpoint later
+            // When you have a file upload endpoint, upload imageFile first,
+            // get back a URL, then pass it as profilePic below
+            const profilePicUrl = null; // replace with upload URL when ready
+
             await api.post("/api/profile/create", {
                 name: form.name,
                 bio: form.bio || null,
-                profilePic: form.profilePic || null,
+                profilePic: profilePicUrl,
                 relationshipStatus: null,
                 isPrivate: form.isPrivate,
             });
@@ -190,10 +243,14 @@ export function ProfileSetupPage() {
     };
 
     return (
-        <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", fontFamily: inter }}>
-            <AuthStyles />
+        <div style={{
+            background: C.bg, minHeight: "100vh",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "relative", overflow: "hidden", fontFamily: inter,
+        }}>
+            <PageStyles />
 
-            {/* Background SVG elements */}
+            {/* Background SVG decorations */}
             <Swoosh color={C.accent} style={{ width: 280, top: 30, left: -20, opacity: 0.7 }} />
             <Swoosh color={C.lavender} style={{ width: 260, bottom: 40, right: -20, opacity: 0.6 }} />
             <CurlyLine color={C.lavender} style={{ width: 65, top: 40, right: 60, opacity: 0.8 }} />
@@ -202,14 +259,13 @@ export function ProfileSetupPage() {
             <SketchCircle color={C.accent} style={{ width: 280, bottom: -70, left: -70, opacity: 0.25 }} />
             <DotGrid color={C.primary} style={{ width: 100, top: 80, left: 80, opacity: 1 }} />
             <DotGrid color={C.primary} style={{ width: 100, bottom: 80, right: 80, opacity: 1 }} />
-            <WaveLine color={C.accent} style={{ width: 200, top: 200, right: "20%", opacity: 0.45 }} />
+            <WaveLine color={C.accent} style={{ width: 200, top: 200, right: "18%", opacity: 0.45 }} />
             <Scribble color={C.primary} style={{ width: 120, bottom: 200, left: 120, opacity: 1 }} />
 
-            {/* Card — slightly wider for the extra fields */}
             <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 460, padding: "0 20px" }}>
-                <LogoMark />
+                <LogoMark onClick={() => navigate("/")} />
 
-                {/* Step indicator */}
+                {/* Step badge */}
                 <div style={{ textAlign: "center", marginBottom: 20 }}>
           <span style={{
               display: "inline-block", background: C.lavender, color: C.primary,
@@ -218,7 +274,13 @@ export function ProfileSetupPage() {
           }}>Step 2 of 2 — Set up your profile</span>
                 </div>
 
-                <AuthCard>
+                {/* Card */}
+                <div style={{
+                    background: C.accent, borderRadius: 32, padding: "40px 40px 36px",
+                    border: `2.5px solid ${C.primary}`,
+                    boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
+                    position: "relative",
+                }}>
                     <h2 style={{ fontFamily: faro, fontSize: 28, fontWeight: 900, margin: "0 0 6px", letterSpacing: "-0.5px", color: C.primary }}>
                         Tell us about you
                     </h2>
@@ -226,23 +288,59 @@ export function ProfileSetupPage() {
                         This is what your friends will see on your profile.
                     </p>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
-                        {/* Profile pic URL */}
+                        {/* ── PROFILE PICTURE UPLOAD ── */}
                         <div>
-                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 6, fontFamily: inter }}>
-                                Profile picture URL <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
+                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 12, fontFamily: inter }}>
+                                Profile picture <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
                             </label>
-                            <input className="auth-input" name="profilePic" placeholder="https://example.com/your-photo.jpg" value={form.profilePic} onChange={handleChange} />
-                            {/* Live preview */}
-                            {form.profilePic && (
-                                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-                                    <img src={form.profilePic} alt="preview"
-                                         onError={(e) => { e.target.style.display = "none"; }}
-                                         style={{ width: 44, height: 44, borderRadius: "50%", border: `2px solid ${C.primary}`, objectFit: "cover" }} />
-                                    <span style={{ fontSize: 13, color: "#3a5c48", fontFamily: inter }}>Preview</span>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                                {/* Circular preview */}
+                                <div style={{
+                                    width: 80, height: 80, borderRadius: "50%",
+                                    border: `2.5px solid ${C.primary}`,
+                                    background: C.white,
+                                    overflow: "hidden",
+                                    flexShrink: 0,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    position: "relative",
+                                }}>
+                                    {preview ? (
+                                        <img src={preview} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                    ) : (
+                                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                                            <circle cx="16" cy="12" r="6" stroke={C.primary} strokeWidth="2" opacity="0.4" />
+                                            <path d="M 4 28 Q 4 20 16 20 Q 28 20 28 28" stroke={C.primary} strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+                                        </svg>
+                                    )}
                                 </div>
-                            )}
+
+                                {/* Buttons beside the circle */}
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <button className="upload-btn" onClick={() => fileInputRef.current?.click()}>
+                                        {preview ? "Change photo" : "Upload photo"}
+                                    </button>
+                                    {preview && (
+                                        <button className="remove-btn" onClick={handleRemoveImage}>
+                                            Remove
+                                        </button>
+                                    )}
+                                    <span style={{ fontSize: 12, color: "#3a5c48", fontFamily: inter }}>
+                    JPG, PNG · Max 5MB
+                  </span>
+                                </div>
+                            </div>
+
+                            {/* Hidden file input */}
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleFileChange}
+                                style={{ display: "none" }}
+                            />
                         </div>
 
                         {/* Display name */}
@@ -278,7 +376,6 @@ export function ProfileSetupPage() {
                                 <div style={{ fontSize: 14, fontWeight: 600, color: C.primary, fontFamily: inter }}>Private account</div>
                                 <div style={{ fontSize: 12, color: "#3a5c48", marginTop: 2, fontFamily: inter }}>Hide from search and friend lists</div>
                             </div>
-                            {/* Toggle */}
                             <div
                                 className="toggle-track"
                                 onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}
@@ -300,9 +397,8 @@ export function ProfileSetupPage() {
                         <button className="auth-btn" onClick={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
                             {loading ? "Saving..." : "Start chatting →"}
                         </button>
-
                     </div>
-                </AuthCard>
+                </div>
 
                 <p style={{ textAlign: "center", fontSize: 13, color: "#3a5c48", margin: "16px 0 0", fontFamily: inter, opacity: 0.7 }}>
                     You can update all of this later in your profile settings.
@@ -311,4 +407,3 @@ export function ProfileSetupPage() {
         </div>
     );
 }
-export default ProfileSetupPage;
