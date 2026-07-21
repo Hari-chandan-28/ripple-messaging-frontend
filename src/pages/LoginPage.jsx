@@ -121,12 +121,43 @@ const AuthStyles = () => (
   `}</style>
 );
 
-const LogoMark = () => (
-    <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px",}}>
-            <Logo style={{width: "100%", height: "100%" ,color:C.primary}}/>
+const LogoMark = ({ onClick }) => (
+    <div
+        onClick={onClick}
+        style={{
+            textAlign: "center",
+            marginBottom: 28,
+            cursor: "pointer", // Shows hand cursor
+        }}
+    >
+        <div
+            style={{
+                width: 52,
+                height: 52,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 4px",
+            }}
+        >
+            <Logo
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    color: C.primary,
+                }}
+            />
         </div>
-        <span style={{fontSize: 28, fontWeight: 900, fontFamily: faro, letterSpacing: "-1px", color: C.primary,}}>
+
+        <span
+            style={{
+                fontSize: 28,
+                fontWeight: 900,
+                fontFamily: faro,
+                letterSpacing: "-1px",
+                color: C.primary,
+            }}
+        >
             Ripple^
         </span>
     </div>
@@ -140,7 +171,7 @@ const AuthCard = ({ children }) => (
         padding: "40px 40px 36px",
         border: `2.5px solid ${C.primary}`,
         width: "100%",
-        maxWidth: 420,
+        maxWidth: 550,
         boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
         position: "relative",
     }}>
@@ -192,8 +223,8 @@ export function LoginPage() {
             <Scribble color={C.primary} style={{ width: 110, top: 180, right: 100, opacity: 1 }} />
 
             {/* Card */}
-            <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 420, margin: "0 auto", }}>
-                <LogoMark />
+            <div style={{ position: "relative",top : -23 , zIndex: 10, width: "100%", maxWidth: 470, margin: "0 auto" }}>
+                <LogoMark onClick={() => navigate("/")} />
                 <AuthCard >
                     <h2 style={{ fontFamily: faro, fontSize: 28, fontWeight: 900, margin: "0 0 6px", letterSpacing: "-0.5px", color: C.primary }}>
                         Welcome back

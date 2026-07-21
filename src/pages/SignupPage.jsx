@@ -129,12 +129,43 @@ const AuthStyles = () => (
 );
 
 // ─── LOGO MARK ────────────────────────────────────────────────
-const LogoMark = () => (
-    <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <div style={{width: 52, height: 52, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px",}}>
-            <Logo style={{width: "100%", height: "100%" ,color:C.primary}}/>
+const LogoMark = ({ onClick }) => (
+    <div
+        onClick={onClick}
+        style={{
+            textAlign: "center",
+            marginBottom: 28,
+            cursor: "pointer", // Shows hand cursor
+        }}
+    >
+        <div
+            style={{
+                width: 52,
+                height: 52,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 4px",
+            }}
+        >
+            <Logo
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    color: C.primary,
+                }}
+            />
         </div>
-        <span style={{fontSize: 28, fontWeight: 900, fontFamily: faro, letterSpacing: "-1px", color: C.primary,}}>
+
+        <span
+            style={{
+                fontSize: 28,
+                fontWeight: 900,
+                fontFamily: faro,
+                letterSpacing: "-1px",
+                color: C.primary,
+            }}
+        >
             Ripple^
         </span>
     </div>
@@ -148,7 +179,7 @@ const AuthCard = ({ children }) => (
         padding: "40px 40px 36px",
         border: `2.5px solid ${C.primary}`,
         width: "100%",
-        maxWidth: 420,
+        maxWidth: 550,
         boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
         position: "relative",
     }}>
@@ -200,8 +231,8 @@ export function SignupPage() {
             <WaveLine color={C.accent} style={{ width: 200, top: 80, left: "30%", opacity: 0.5 }} />
 
             {/* Card */}
-            <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 420, padding: "0 20px" }}>
-                <LogoMark />
+            <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 550, padding: "0 20px" }}>
+                <LogoMark onClick={() => navigate("/")} />
                 <AuthCard>
                     <h2 style={{ fontFamily: faro, fontSize: 28, fontWeight: 900, margin: "0 0 6px", letterSpacing: "-0.5px", color: C.primary }}>
                         Create account

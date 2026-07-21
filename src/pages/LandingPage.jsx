@@ -82,7 +82,7 @@ const Scribble = ({ color = colors.primary, style = {} }) => (
 const ArrowSketch = ({ color = colors.primary, style = {} }) => (
     <svg viewBox="0 0 80 80" fill="none" style={{ position: "absolute", pointerEvents: "none", ...style }}>
         <path d="M 20 20 Q 50 10 60 50" stroke={color} strokeWidth="2.5" strokeLinecap="round" opacity="0.25" />
-        <path d="M 52 46 L 60 50 L 56 42" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.25" />
+        <path d="M60 50 L52 44 M60 50 L50 54" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.25" />
     </svg>
 );
 
