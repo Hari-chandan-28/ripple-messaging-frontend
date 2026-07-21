@@ -7,6 +7,12 @@ import FriendsIcon from "../assets/icons/connection.svg?react";
 import SearchIcon from "../assets/icons/search.svg?react";
 import MessageIcon from "../assets/icons/message.svg?react";
 import Logo from "../assets/icons/logo.svg?react";
+import L1 from "../assets/svgs/male-hand.svg?react";
+import L2 from "../assets/svgs/playbutton.svg?react";
+import L3 from "../assets/svgs/right arrow.svg?react";
+import L4 from "../assets/svgs/right-arrow-hand.svg?react";
+import L5 from "../assets/svgs/right-drawn-arrow.svg?react";
+import L6 from "../assets/svgs/swirly-arrow.svg?react";
 
 const colors = {
     bg: "#f8f4f0",
@@ -343,6 +349,56 @@ export default function LandingPage() {
                 <Swoosh color={colors.lavender} style={{ width: 280, bottom: 10, right: -20, opacity: 0.8 }} />
                 <ArrowSketch color={colors.primary} style={{ width: 70, top: 20, right: 200, opacity: 1 }} />
                 <Scribble color={colors.primary} style={{ width: 110, bottom: 10, left: 200, opacity: 1 }} />
+                    {/*<L1*/}
+                    {/*    style={{*/}
+                    {/*        position: "absolute",*/}
+                    {/*        width: 90,*/}
+                    {/*        top: "8%",*/}
+                    {/*        left: "12%",*/}
+                    {/*        transform: "rotate(-25deg)",*/}
+                    {/*        color: colors.primary,*/}
+                    {/*        opacity: 0.8,*/}
+                    {/*    }}*/}
+                    {/*/>*/}
+
+                    {/*<L2*/}
+                    {/*    style={{*/}
+                    {/*        position: "absolute",*/}
+                    {/*        width: 120,*/}
+                    {/*        top: "20%",*/}
+                    {/*        right: "8%",*/}
+                    {/*        transform: "rotate(5deg)",*/}
+                    {/*        color: colors.lavender,*/}
+                    {/*        opacity: 0.7,*/}
+                    {/*    }}*/}
+                    {/*/>*/}
+
+                    <L3
+                        style={{
+                            position: "absolute",
+                            width: 100,
+                            bottom: "15%",
+                            left: "18%",
+                            transform: "rotate(15deg)",
+                            color: colors.accent,
+                            opacity: 0.9,
+                        }}
+                    />
+
+                    <L4
+                        style={{
+                            position: "absolute",
+                            width: 80,
+                            bottom: "10%",
+                            right: "20%",
+                            transform: "rotate(-45deg)",
+                            color: colors.primary,
+                            opacity: 0.75,
+                        }}
+                    />
+
+
+
 
                 <div style={{ maxWidth: 1100, margin: "0 auto", textAlign: "center", position: "relative" }}>
 
@@ -396,7 +452,28 @@ export default function LandingPage() {
             <section id="features" style={{ padding: "80px 48px", maxWidth: 1100, margin: "0 auto", position: "relative" }}>
                 {/* CHANGE 7: SVG decorations in features */}
                 <Swoosh color={colors.accent} style={{ width: 180, top: 20, right: 0, opacity: 0.6 }} />
-
+                <L5
+                    style={{
+                        position: "absolute",
+                        width: 100,
+                        top: "41%",
+                        left: "0%",
+                        transform: "translate(-50%, -50%) rotate(50deg)",
+                        color: colors.accent,
+                        opacity: 0.85,
+                    }}
+                />
+                <L6
+                    style={{
+                        position: "absolute",
+                        width: 120,
+                        top: "44%",
+                        left: "99%",
+                        transform: "rotate(5deg)",
+                        color: colors.lavender,
+                        opacity: 0.7,
+                    }}
+                />
                 <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "2px", textTransform: "uppercase", color: "#3a5c48", marginBottom: 16 }}>Features</div>
                 <h2 style={{ fontFamily: faro, fontSize: 52, fontWeight: 900, letterSpacing: "-1.5px", margin: "0 0 16px", lineHeight: 1.05 }}>
                     Everything you need to connect.
