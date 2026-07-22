@@ -128,58 +128,15 @@ const AuthStyles = () => (
   `}</style>
 );
 
-// ─── LOGO MARK ────────────────────────────────────────────────
-const LogoMark = ({ onClick }) => (
-    <div
-        onClick={onClick}
-        style={{
-            textAlign: "center",
-            marginBottom: 28,
-            cursor: "pointer", // Shows hand cursor
-        }}
-    >
-        <div
-            style={{
-                width: 52,
-                height: 52,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 4px",
-            }}
-        >
-            <Logo
-                style={{
-                    width: "100%",
-                    height: "100%",
-                    color: C.primary,
-                }}
-            />
-        </div>
-
-        <span
-            style={{
-                fontSize: 28,
-                fontWeight: 900,
-                fontFamily: faro,
-                letterSpacing: "-1px",
-                color: C.primary,
-            }}
-        >
-            Ripple^
-        </span>
-    </div>
-);
-
 // ─── AUTH CARD WRAPPER ────────────────────────────────────────
 const AuthCard = ({ children }) => (
     <div style={{
         background: C.accent,
-        borderRadius: 32,
-        padding: "40px 40px 36px",
+        borderRadius: 28,
+        padding: "22px 28px",
         border: `2.5px solid ${C.primary}`,
         width: "100%",
-        maxWidth: 550,
+        maxWidth: "100%",
         boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
         position: "relative",
     }}>
@@ -229,10 +186,42 @@ export function SignupPage() {
             <DotGrid color={C.primary} style={{ width: 100, bottom: 100, left: 100, opacity: 1 }} />
             <Scribble color={C.primary} style={{ width: 120, bottom: 200, right: 80, opacity: 1 }} />
             <WaveLine color={C.accent} style={{ width: 200, top: 80, left: "30%", opacity: 0.5 }} />
+            {/* Main wrapper — logo left, form right */}
+            <div style={{
+                position: "relative", zIndex: 10,
+                display: "flex", alignItems: "flex-start", gap: 20,
+                width: "100%", maxWidth: 520, padding: "0 20px",
+            }}>
 
-            {/* Card */}
-            <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 550, padding: "0 20px" }}>
-                <LogoMark onClick={() => navigate("/")} />
+                {/* Logo — left side */}
+                <div
+                    onClick={() => navigate("/")}
+                    style={{ cursor: "pointer", flexShrink: 0, paddingTop: 48, display: "flex", flexDirection: "column", alignItems: "center" }}
+                >
+                    <Logo style={{ width: 40, height: 40, color: C.primary }} />
+                    <span style={{ fontSize: 11, fontWeight: 900, fontFamily: faro, color: C.primary, letterSpacing: "-0.5px", marginTop: 4 }}>
+                        Ripple^
+                    </span>
+                </div>
+
+                {/* Right side — badge + card + note */}
+                <div style={{ flex: 1 ,width: "100%",
+                    maxWidth: 520}}>
+
+                    {/* Step badge */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                        <h3 style={{ fontFamily: faro, fontSize: 12, fontWeight: 700, color: C.primary, margin: 0, letterSpacing: "1px", opacity: 0.45 }}>
+                            GET STARTED
+                        </h3>
+                        <span style={{
+                            background: C.lavender, color: C.primary, padding: "4px 12px",
+                            borderRadius: 100, fontSize: 11, fontWeight: 600,
+                            border: `1.5px solid ${C.primary}`, fontFamily: inter,
+                        }}>Step 1 of 2</span>
+                    </div>
+
+                    {/* Card */}
+            <div style={{ position: "relative", zIndex: 10, width: "100%" }}>
                 <AuthCard>
                     <h2 style={{ fontFamily: faro, fontSize: 28, fontWeight: 900, margin: "0 0 6px", letterSpacing: "-0.5px", color: C.primary }}>
                         Create account
@@ -271,6 +260,8 @@ export function SignupPage() {
                         <span className="auth-link" onClick={() => navigate("/login")}>Log in</span>
                     </p>
                 </AuthCard>
+            </div>
+                </div>
             </div>
         </div>
     );
