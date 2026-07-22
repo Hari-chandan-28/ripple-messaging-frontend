@@ -105,3 +105,6 @@ html {
 ::selection {
     background: rgba(79, 70, 229, 0.2);
 }
+.status-dropdown::-webkit-scrollbar {
+    display: none;
+}

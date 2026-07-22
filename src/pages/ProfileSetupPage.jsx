@@ -53,10 +53,10 @@ const PageStyles = () => (
     <style>{`
     .auth-input {
       width: 100%;
-      padding: 14px 18px;
+      padding: 12px 16px;
       border: 2px solid ${C.primary};
       border-radius: 14px;
-      font-size: 15px;
+      font-size: 14px;
       font-family: ${inter};
       background: ${C.white};
       color: ${C.primary};
@@ -66,17 +66,17 @@ const PageStyles = () => (
     }
     .auth-input:focus {
       border-color: #2d5540;
-      box-shadow: 0 0 0 4px rgba(239,248,122,0.35);
+      box-shadow: 0 0 0 4px rgba(30,58,43,0.1);
     }
-    .auth-input::placeholder { color: rgba(30,58,43,0.4); }
+    .auth-input::placeholder { color: rgba(30,58,43,0.35); }
     .auth-btn {
       width: 100%;
-      padding: 15px;
+      padding: 13px;
       background: ${C.primary};
       color: ${C.accent};
       border: none;
       border-radius: 100px;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       font-family: ${inter};
       cursor: pointer;
@@ -89,38 +89,35 @@ const PageStyles = () => (
     }
     .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     .upload-btn {
-      padding: 8px 18px;
+      padding: 8px 16px;
       background: ${C.primary};
       color: ${C.accent};
       border: none;
       border-radius: 100px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       font-family: ${inter};
       cursor: pointer;
       transition: background 0.2s, transform 0.15s;
+      white-space: nowrap;
     }
-    .upload-btn:hover {
-      background: #2d5540;
-      transform: translateY(-1px);
-    }
+    .upload-btn:hover { background: #2d5540; transform: translateY(-1px); }
     .remove-btn {
-      padding: 8px 18px;
+      padding: 8px 16px;
       background: transparent;
       color: ${C.primary};
       border: 1.5px solid ${C.primary};
       border-radius: 100px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       font-family: ${inter};
       cursor: pointer;
       transition: background 0.2s;
+      white-space: nowrap;
     }
-    .remove-btn:hover {
-      background: rgba(30,58,43,0.08);
-    }
+    .remove-btn:hover { background: rgba(30,58,43,0.08); }
     .toggle-track {
-      width: 48px; height: 26px;
+      width: 46px; height: 24px;
       border-radius: 100px;
       border: 2px solid ${C.primary};
       cursor: pointer;
@@ -131,59 +128,126 @@ const PageStyles = () => (
       flex-shrink: 0;
     }
     .toggle-thumb {
-      width: 18px; height: 18px;
+      width: 16px; height: 16px;
       border-radius: 50%;
-      background: ${C.primary};
       transition: transform 0.2s;
     }
+    .status-dropdown::-webkit-scrollbar { display: none; }
   `}</style>
 );
-const LogoMark = ({ onClick }) => (
-    <div
-        onClick={onClick}
-        style={{
-            textAlign: "center",
-            marginBottom: 28,
-            cursor: "pointer", // Shows hand cursor
-        }}
-    >
-        <div
-            style={{
-                width: 52,
-                height: 52,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 4px",
-            }}
-        >
-            <Logo
+
+// Status picker
+const STATUS_OPTIONS = [
+    { value: "", label: "Prefer not to say", emoji: "🤍" },
+    { value: "SINGLE", label: "Single", emoji: "🌿" },
+    { value: "COMMITTED", label: "In a relationship", emoji: "💛" },
+    { value: "MARRIED", label: "Married", emoji: "💍" },
+    { value: "COMPLICATED", label: "It's complicated", emoji: "🌀" },
+];
+
+function StatusPicker({ value, onChange }) {
+    const [open, setOpen] = useState(false);
+    const selected = STATUS_OPTIONS.find(o => o.value === value) || STATUS_OPTIONS[0];
+
+    return (
+        <div style={{ position: "relative" }}>
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
                 style={{
                     width: "100%",
-                    height: "100%",
+                    padding: "12px 16px",
+                    border: `2px solid ${C.primary}`,
+                    borderRadius: open ? "14px 14px 0 0" : 14,
+                    fontSize: 14,
+                    fontFamily: inter,
+                    background: C.white,
                     color: C.primary,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    boxSizing: "border-box",
+                    transition: "box-shadow 0.2s",
+                    boxShadow: open ? `0 0 0 4px rgba(30,58,43,0.1)` : "none",
                 }}
-            />
-        </div>
-
-        <span
-            style={{
-                fontSize: 28,
-                fontWeight: 900,
-                fontFamily: faro,
-                letterSpacing: "-1px",
-                color: C.primary,
-            }}
-        >
-            Ripple^
+            >
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 16 }}>{selected.emoji}</span>
+          <span style={{ fontWeight: value ? 600 : 400, color: value ? C.primary : "rgba(30,58,43,0.35)" }}>
+            {selected.label}
+          </span>
         </span>
-    </div>
-);
+                <svg
+                    width="14" height="14" viewBox="0 0 16 16" fill="none"
+                    style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}
+                >
+                    <path d="M 3 5 L 8 11 L 13 5" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+
+            {open && (
+                <div
+                    className="status-dropdown"
+                    style={{
+                        position: "absolute",
+                        top: "100%",
+                        left: 0,
+                        right: 0,
+                        background: C.white,
+                        border: `2px solid ${C.primary}`,
+                        borderTop: "none",
+                        borderRadius: "0 0 14px 14px",
+                        overflowY: "auto",
+                        maxHeight: "96px",
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                        zIndex: 50,
+                        boxShadow: "0 8px 24px rgba(30,58,43,0.12)",
+                    }}
+                >
+                    {STATUS_OPTIONS.map((opt, i) => (
+                        <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => { onChange(opt.value); setOpen(false); }}
+                            style={{
+                                width: "100%",
+                                padding: "11px 16px",
+                                background: opt.value === value ? "rgba(239,248,122,0.4)" : "transparent",
+                                border: "none",
+                                borderTop: i === 0 ? "none" : `1px solid rgba(30,58,43,0.08)`,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                cursor: "pointer",
+                                fontFamily: inter,
+                                fontSize: 14,
+                                color: C.primary,
+                                textAlign: "left",
+                                transition: "background 0.15s",
+                            }}
+                            onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.background = "rgba(30,58,43,0.05)"; }}
+                            onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.background = "transparent"; }}
+                        >
+                            <span style={{ fontSize: 16, flexShrink: 0 }}>{opt.emoji}</span>
+                            <span style={{ fontWeight: opt.value === value ? 700 : 400 }}>{opt.label}</span>
+                            {opt.value === value && (
+                                <svg style={{ marginLeft: "auto" }} width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                    <path d="M 3 8 L 7 12 L 13 4" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function ProfileSetupPage() {
-    const [form, setForm] = useState({ name: "", bio: "", isPrivate: false });
-    const [preview, setPreview] = useState(null);   // base64 or object URL for display
-    const [imageFile, setImageFile] = useState(null); // actual File object
+    const [form, setForm] = useState({ name: "", bio: "", isPrivate: false, relationshipStatus: "" });
+    const [preview, setPreview] = useState(null);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef(null);
@@ -191,66 +255,47 @@ export default function ProfileSetupPage() {
 
     const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-    // When user picks a file — create a local preview URL
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!file.type.startsWith("image/")) {
-            setError("Please select an image file.");
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            setError("Image must be under 5MB.");
-            return;
-        }
+        if (!file.type.startsWith("image/")) { setError("Please select an image file."); return; }
+        if (file.size > 5 * 1024 * 1024) { setError("Image must be under 5MB."); return; }
         setError("");
-        setImageFile(file);
         setPreview(URL.createObjectURL(file));
     };
 
     const handleRemoveImage = () => {
         setPreview(null);
-        setImageFile(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
     const handleSubmit = async () => {
         setError("");
-        if (!form.name.trim()) {
-            setError("Display name is required.");
-            return;
-        }
+        if (!form.name.trim()) { setError("Display name is required."); return; }
         setLoading(true);
         try {
-            // For now send null for profilePic — wire up file upload endpoint later
-            // When you have a file upload endpoint, upload imageFile first,
-            // get back a URL, then pass it as profilePic below
-            const profilePicUrl = null; // replace with upload URL when ready
-
             await api.post("/api/profile/create", {
                 name: form.name,
                 bio: form.bio || null,
-                profilePic: profilePicUrl,
-                relationshipStatus: null,
+                profilePic: null,
+                relationshipStatus: form.relationshipStatus || null,
                 isPrivate: form.isPrivate,
             });
             navigate("/app");
         } catch (err) {
             setError(err.response?.data?.message || "Failed to save profile.");
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     };
 
     return (
         <div style={{
             background: C.bg, minHeight: "100vh",
-            display: "flex", alignItems: "center", justifyContent: "center",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 0",
             position: "relative", overflow: "hidden", fontFamily: inter,
         }}>
             <PageStyles />
 
-            {/* Background SVG decorations */}
+            {/* Background SVGs */}
             <Swoosh color={C.accent} style={{ width: 280, top: 30, left: -20, opacity: 0.7 }} />
             <Swoosh color={C.lavender} style={{ width: 260, bottom: 40, right: -20, opacity: 0.6 }} />
             <CurlyLine color={C.lavender} style={{ width: 65, top: 40, right: 60, opacity: 0.8 }} />
@@ -262,147 +307,158 @@ export default function ProfileSetupPage() {
             <WaveLine color={C.accent} style={{ width: 200, top: 200, right: "18%", opacity: 0.45 }} />
             <Scribble color={C.primary} style={{ width: 120, bottom: 200, left: 120, opacity: 1 }} />
 
-            <div style={{ position: "relative", zIndex: 10, width: "100%", maxWidth: 460, padding: "0 20px" }}>
-                <LogoMark onClick={() => navigate("/")} />
+            {/* Main wrapper — logo left, form right */}
+            <div style={{
+                position: "relative", zIndex: 10,
+                display: "flex", alignItems: "flex-start", gap: 20,
+                width: "100%", maxWidth: 520, padding: "0 20px",
+            }}>
 
-                {/* Step badge */}
-                <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <span style={{
-              display: "inline-block", background: C.lavender, color: C.primary,
-              padding: "5px 16px", borderRadius: 100, fontSize: 12, fontWeight: 600,
-              border: `1.5px solid ${C.primary}`, fontFamily: inter,
-          }}>Step 2 of 2 — Set up your profile</span>
+                {/* Logo — left side */}
+                <div
+                    onClick={() => navigate("/")}
+                    style={{ cursor: "pointer", flexShrink: 0, paddingTop: 48, display: "flex", flexDirection: "column", alignItems: "center" }}
+                >
+                    <Logo style={{ width: 40, height: 40, color: C.primary }} />
+                    <span style={{ fontSize: 11, fontWeight: 900, fontFamily: faro, color: C.primary, letterSpacing: "-0.5px", marginTop: 4 }}>
+            Ripple^
+          </span>
                 </div>
 
-                {/* Card */}
-                <div style={{
-                    background: C.accent, borderRadius: 32, padding: "40px 40px 36px",
-                    border: `2.5px solid ${C.primary}`,
-                    boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
-                    position: "relative",
-                }}>
-                    <h2 style={{ fontFamily: faro, fontSize: 28, fontWeight: 900, margin: "0 0 6px", letterSpacing: "-0.5px", color: C.primary }}>
-                        Tell us about you
-                    </h2>
-                    <p style={{ fontSize: 14, color: "#3a5c48", margin: "0 0 28px", fontFamily: inter }}>
-                        This is what your friends will see on your profile.
-                    </p>
+                {/* Right side — badge + card + note */}
+                <div style={{ flex: 1 }}>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-
-                        {/* ── PROFILE PICTURE UPLOAD ── */}
-                        <div>
-                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 12, fontFamily: inter }}>
-                                Profile picture <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
-                            </label>
-
-                            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                                {/* Circular preview */}
-                                <div style={{
-                                    width: 80, height: 80, borderRadius: "50%",
-                                    border: `2.5px solid ${C.primary}`,
-                                    background: C.white,
-                                    overflow: "hidden",
-                                    flexShrink: 0,
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    position: "relative",
-                                }}>
-                                    {preview ? (
-                                        <img src={preview} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                    ) : (
-                                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                                            <circle cx="16" cy="12" r="6" stroke={C.primary} strokeWidth="2" opacity="0.4" />
-                                            <path d="M 4 28 Q 4 20 16 20 Q 28 20 28 28" stroke={C.primary} strokeWidth="2" strokeLinecap="round" opacity="0.4" />
-                                        </svg>
-                                    )}
-                                </div>
-
-                                {/* Buttons beside the circle */}
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    <button className="upload-btn" onClick={() => fileInputRef.current?.click()}>
-                                        {preview ? "Change photo" : "Upload photo"}
-                                    </button>
-                                    {preview && (
-                                        <button className="remove-btn" onClick={handleRemoveImage}>
-                                            Remove
-                                        </button>
-                                    )}
-                                    <span style={{ fontSize: 12, color: "#3a5c48", fontFamily: inter }}>
-                    JPG, PNG · Max 5MB
-                  </span>
-                                </div>
-                            </div>
-
-                            {/* Hidden file input */}
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileChange}
-                                style={{ display: "none" }}
-                            />
-                        </div>
-
-                        {/* Display name */}
-                        <div>
-                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 6, fontFamily: inter }}>
-                                Display name <span style={{ fontWeight: 400, color: "#3a5c48" }}>(shown to friends)</span>
-                            </label>
-                            <input className="auth-input" name="name" placeholder="e.g. Harry" value={form.name} onChange={handleChange} />
-                        </div>
-
-                        {/* Bio */}
-                        <div>
-                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 6, fontFamily: inter }}>
-                                Bio <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
-                            </label>
-                            <textarea
-                                className="auth-input"
-                                name="bio"
-                                placeholder="A short line about yourself..."
-                                value={form.bio}
-                                onChange={handleChange}
-                                rows={3}
-                                style={{ resize: "none", borderRadius: 14, lineHeight: 1.6 }}
-                            />
-                        </div>
-
-                        {/* Private toggle */}
-                        <div style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            background: "rgba(30,58,43,0.07)", borderRadius: 14, padding: "14px 16px",
-                        }}>
-                            <div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: C.primary, fontFamily: inter }}>Private account</div>
-                                <div style={{ fontSize: 12, color: "#3a5c48", marginTop: 2, fontFamily: inter }}>Hide from search and friend lists</div>
-                            </div>
-                            <div
-                                className="toggle-track"
-                                onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}
-                                style={{ background: form.isPrivate ? C.primary : "transparent" }}
-                            >
-                                <div className="toggle-thumb" style={{
-                                    transform: form.isPrivate ? "translateX(22px)" : "translateX(0px)",
-                                    background: form.isPrivate ? C.accent : C.primary,
-                                }} />
-                            </div>
-                        </div>
-
-                        {error && (
-                            <div style={{ background: "rgba(30,58,43,0.1)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.primary, fontFamily: inter }}>
-                                {error}
-                            </div>
-                        )}
-
-                        <button className="auth-btn" onClick={handleSubmit} disabled={loading} style={{ marginTop: 4 }}>
-                            {loading ? "Saving..." : "Start chatting →"}
-                        </button>
+                    {/* Step badge */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                        <h3 style={{ fontFamily: faro, fontSize: 12, fontWeight: 700, color: C.primary, margin: 0, letterSpacing: "1px", opacity: 0.45 }}>
+                            PROFILE SETUP
+                        </h3>
+                        <span style={{
+                            background: C.lavender, color: C.primary, padding: "4px 12px",
+                            borderRadius: 100, fontSize: 11, fontWeight: 600,
+                            border: `1.5px solid ${C.primary}`, fontFamily: inter,
+                        }}>Step 2 of 2</span>
                     </div>
-                </div>
 
-                <p style={{ textAlign: "center", fontSize: 13, color: "#3a5c48", margin: "16px 0 0", fontFamily: inter, opacity: 0.7 }}>
-                    You can update all of this later in your profile settings.
-                </p>
+                    {/* Card */}
+                    <div style={{
+                        background: C.accent, borderRadius: 28, padding: "22px 28px",
+                        border: `2.5px solid ${C.primary}`,
+                        boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
+                    }}>
+                        <h2 style={{ fontFamily: faro, fontSize: 24, fontWeight: 900, margin: "0 0 2px", letterSpacing: "-0.5px", color: C.primary }}>
+                            Tell us about you
+                        </h2>
+                        <p style={{ fontSize: 13, color: "#3a5c48", margin: "0 0 16px", fontFamily: inter }}>
+                            This is what your friends will see on your profile.
+                        </p>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+
+                            {/* Profile picture */}
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 8, fontFamily: inter }}>
+                                    Profile picture <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
+                                </label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                    <div style={{
+                                        width: 56, height: 56, borderRadius: "50%",
+                                        border: `2px solid ${C.primary}`, background: C.white,
+                                        overflow: "hidden", flexShrink: 0,
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                        {preview ? (
+                                            <img src={preview} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                        ) : (
+                                            <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+                                                <circle cx="16" cy="12" r="6" stroke={C.primary} strokeWidth="2" opacity="0.4" />
+                                                <path d="M 4 28 Q 4 20 16 20 Q 28 20 28 28" stroke={C.primary} strokeWidth="2" strokeLinecap="round" opacity="0.4" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                        <button className="upload-btn" onClick={() => fileInputRef.current?.click()}>
+                                            {preview ? "Change photo" : "Upload photo"}
+                                        </button>
+                                        {preview && <button className="remove-btn" onClick={handleRemoveImage}>Remove</button>}
+                                        <span style={{ fontSize: 11, color: "#3a5c48", fontFamily: inter }}>JPG, PNG · Max 5MB</span>
+                                    </div>
+                                </div>
+                                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+                            </div>
+
+                            {/* Display name */}
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 5, fontFamily: inter }}>
+                                    Display name <span style={{ fontWeight: 400, color: "#3a5c48" }}>(shown to friends)</span>
+                                </label>
+                                <input className="auth-input" name="name" placeholder="e.g. Harry" value={form.name} onChange={handleChange} />
+                            </div>
+
+                            {/* Bio */}
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 5, fontFamily: inter }}>
+                                    Bio <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
+                                </label>
+                                <textarea
+                                    className="auth-input"
+                                    name="bio"
+                                    placeholder="A short line about yourself..."
+                                    value={form.bio}
+                                    onChange={handleChange}
+                                    rows={2}
+                                    style={{ resize: "none", borderRadius: 14, lineHeight: 1.5 }}
+                                />
+                            </div>
+
+                            {/* Relationship status */}
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 5, fontFamily: inter }}>
+                                    Relationship status <span style={{ fontWeight: 400, color: "#3a5c48" }}>(optional)</span>
+                                </label>
+                                <StatusPicker
+                                    value={form.relationshipStatus}
+                                    onChange={(val) => setForm({ ...form, relationshipStatus: val })}
+                                />
+                            </div>
+
+                            {/* Private toggle */}
+                            <div style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                background: "rgba(30,58,43,0.07)", borderRadius: 12, padding: "11px 14px",
+                            }}>
+                                <div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: C.primary, fontFamily: inter }}>Private account</div>
+                                    <div style={{ fontSize: 11, color: "#3a5c48", marginTop: 1, fontFamily: inter }}>Hide from search and friend lists</div>
+                                </div>
+                                <div
+                                    className="toggle-track"
+                                    onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}
+                                    style={{ background: form.isPrivate ? C.primary : "transparent" }}
+                                >
+                                    <div className="toggle-thumb" style={{
+                                        transform: form.isPrivate ? "translateX(22px)" : "translateX(0px)",
+                                        background: form.isPrivate ? C.accent : C.primary,
+                                    }} />
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div style={{ background: "rgba(30,58,43,0.1)", borderRadius: 10, padding: "9px 13px", fontSize: 12, color: C.primary, fontFamily: inter }}>
+                                    {error}
+                                </div>
+                            )}
+
+                            <button className="auth-btn" onClick={handleSubmit} disabled={loading} style={{ marginTop: 2 }}>
+                                {loading ? "Saving..." : "Start chatting →"}
+                            </button>
+                        </div>
+                    </div>
+
+                    <p style={{ textAlign: "center", fontSize: 11, color: "#3a5c48", margin: "8px 0 0", fontFamily: inter, opacity: 0.6 }}>
+                        You can update all of this later in your profile settings.
+                    </p>
+                </div>
             </div>
         </div>
     );
