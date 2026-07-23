@@ -2,7 +2,11 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Logo from "../assets/icons/logo.svg?react";
-
+import NotIcon from "../assets/status/not.svg?react";
+import SingleIcon from "../assets/status/single.svg?react";
+import TwoIcon from "../assets/status/two.svg?react";
+import MarriIcon from "../assets/status/marri.svg?react";
+import MazeIcon from "../assets/status/maze.svg?react";
 const C = {
     bg: "#f8f4f0",
     primary: "#1e3a2b",
@@ -138,13 +142,32 @@ const PageStyles = () => (
 
 // Status picker
 const STATUS_OPTIONS = [
-    { value: "", label: "Prefer not to say", emoji: "🤍" },
-    { value: "SINGLE", label: "Single", emoji: "🌿" },
-    { value: "COMMITTED", label: "In a relationship", emoji: "💛" },
-    { value: "MARRIED", label: "Married", emoji: "💍" },
-    { value: "COMPLICATED", label: "It's complicated", emoji: "🌀" },
+    {
+        value: "",
+        label: "Prefer not to say",
+        icon: <NotIcon width={18} height={18} />,
+    },
+    {
+        value: "SINGLE",
+        label: "Single",
+        icon: <SingleIcon width={18} height={18}  />,
+    },
+    {
+        value: "COMMITTED",
+        label: "In a relationship",
+        icon: <TwoIcon width={18} height={18}  />,
+    },
+    {
+        value: "MARRIED",
+        label: "Married",
+        icon: <MarriIcon width={18} height={18}  />,
+    },
+    {
+        value: "COMPLICATED",
+        label: "It's complicated",
+        icon: <MazeIcon width={18} height={18} style={{ color: "#8B5CF6" }} />,
+    },
 ];
-
 function StatusPicker({ value, onChange }) {
     const [open, setOpen] = useState(false);
     const selected = STATUS_OPTIONS.find(o => o.value === value) || STATUS_OPTIONS[0];
@@ -230,7 +253,16 @@ function StatusPicker({ value, onChange }) {
                             onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.background = "rgba(30,58,43,0.05)"; }}
                             onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.background = "transparent"; }}
                         >
-                            <span style={{ fontSize: 16, flexShrink: 0 }}>{opt.emoji}</span>
+                            <span
+                                style={{
+                                    width: 20,
+                                    height: 20,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                }}>
+                                {opt.icon}</span>
                             <span style={{ fontWeight: opt.value === value ? 700 : 400 }}>{opt.label}</span>
                             {opt.value === value && (
                                 <svg style={{ marginLeft: "auto" }} width="14" height="14" viewBox="0 0 16 16" fill="none">

@@ -3,6 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { getChats } from "../services/messages";
 import { getPending } from "../services/friendship";
 
+const toAbsoluteUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith("http")) return url;
+    return `http://localhost:8081${url}`;
+};
 const C = {
     bg: "#f8f4f0",
     primary: "#1e3a2b",
@@ -211,7 +216,7 @@ function Avatar({ name, pic, size = 40 }) {
             display: "flex", alignItems: "center", justifyContent: "center",
             fontFamily: faro, fontWeight: 900, fontSize: size * 0.35, color: C.primary,
         }}>
-            {pic ? <img src={pic} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initials}
+            {pic ? <img src={toAbsoluteUrl(pic)} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initials}
         </div>
     );
 }
@@ -520,7 +525,281 @@ function FriendsPanel({ onClose, onAccept }) {
 }
 
 // ─── PROFILE PANEL ────────────────────────────────────────────
-import { updateProfile, updatePrivacy } from "../services/profile";
+import { getMyProfile, updateProfile, updatePrivacy, uploadProfilePic } from "../services/profile";
+import { getMyUserId } from "../services/auth";
+
+function ProfilePanel({ onClose }) {
+    const [mode, setMode] = useState("view"); // "view" | "edit"
+    const [profile, setProfile] = useState(null);
+    const [form, setForm] = useState({ name: "", bio: "", relationshipStatus: "", isPrivate: false });
+    const [preview, setPreview] = useState(null);
+    const [imageFile, setImageFile] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [error, setError] = useState("");
+    const fileInputRef = useRef(null);
+
+    useEffect(() => { loadProfile(); }, []);
+
+    const loadProfile = async () => {
+        setLoading(true);
+        try {
+            const userId = getMyUserId();
+            if (!userId) return;
+            const res = await getMyProfile(userId);
+            const p = res.data;
+            setProfile(p);
+            setForm({
+                name: p.name || "",
+                bio: p.bio || "",
+                relationshipStatus: p.relationshipStatus || "",
+                isPrivate: p.isPrivate || false,
+            });
+            setPreview(p.profilePic || null);
+        } catch (e) {
+            setError("Failed to load profile.");
+        } finally { setLoading(false); }
+    };
+
+    const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) { setError("Please select an image."); return; }
+        if (file.size > 5 * 1024 * 1024) { setError("Max 5MB."); return; }
+        setError("");
+        setImageFile(file);
+        setPreview(URL.createObjectURL(file));
+    };
+
+    const handleRemovePic = () => {
+        setPreview(null);
+        setImageFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const handleSave = async () => {
+        setSaving(true); setError(""); setSaved(false);
+        try {
+            let profilePicUrl = profile?.profilePic || null;
+
+            // Upload new pic if selected
+            if (imageFile) {
+                profilePicUrl = await uploadProfilePic(imageFile);
+            }
+            // If pic was removed
+            if (!preview && !imageFile) profilePicUrl = null;
+
+            await updateProfile({
+                name: form.name,
+                bio: form.bio || null,
+                profilePic: profilePicUrl,
+                relationshipStatus: form.relationshipStatus || null,
+                isPrivate: form.isPrivate,
+            });
+
+            await loadProfile();
+            setSaved(true);
+            setMode("view");
+            setImageFile(null);
+            setTimeout(() => setSaved(false), 2500);
+        } catch (e) {
+            setError("Failed to save. Try again.");
+        } finally { setSaving(false); }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+    };
+
+    if (loading) return (
+        <PanelWrapper title="Profile" onClose={onClose}>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(30,58,43,0.4)", fontFamily: inter, fontSize: 14 }}>
+                Loading...
+            </div>
+        </PanelWrapper>
+    );
+
+    return (
+        <PanelWrapper title="Profile" onClose={onClose}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+
+                {mode === "view" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+                        {/* Profile card */}
+                        <div style={{
+                            background: C.accent, borderRadius: 24, padding: "28px 24px",
+                            border: `2px solid ${C.primary}`,
+                            boxShadow: "4px 4px 0px rgba(30,58,43,0.12)",
+                            display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12,
+                        }}>
+                            <Avatar name={profile?.name || "?"} pic={profile?.profilePic} size={80} />
+                            <div>
+                                <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-0.5px" }}>
+                                    {profile?.name || "—"}
+                                </div>
+                                {profile?.bio && (
+                                    <div style={{ fontSize: 14, color: "#3a5c48", marginTop: 4, fontFamily: inter, maxWidth: 280 }}>
+                                        {profile.bio}
+                                    </div>
+                                )}
+                                {profile?.relationshipStatus && (
+                                    <div style={{ marginTop: 8 }}>
+                    <span style={{
+                        display: "inline-block", background: C.lavender, color: C.primary,
+                        padding: "4px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600,
+                        border: `1.5px solid ${C.primary}`, fontFamily: inter,
+                    }}>
+                      {RELATIONSHIP_OPTIONS.find(o => o.value === profile.relationshipStatus)?.label || profile.relationshipStatus}
+                    </span>
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{
+                                display: "flex", alignItems: "center", gap: 6,
+                                fontSize: 12, color: "#3a5c48", fontFamily: inter,
+                            }}>
+                                <div style={{
+                                    width: 8, height: 8, borderRadius: "50%",
+                                    background: profile?.isPrivate ? "rgba(30,58,43,0.3)" : "#4ade80",
+                                }} />
+                                {profile?.isPrivate ? "Private account" : "Public account"}
+                            </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            <button
+                                onClick={() => setMode("edit")}
+                                style={{
+                                    padding: "13px", background: C.primary, color: C.accent,
+                                    border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                                    fontFamily: inter, cursor: "pointer", transition: "background 0.2s",
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = "#2d5540"}
+                                onMouseLeave={e => e.currentTarget.style.background = C.primary}
+                            >
+                                Edit profile
+                            </button>
+                            <button
+                                onClick={handleLogout}
+                                style={{
+                                    padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",
+                                    border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,
+                                    fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                                }}
+                            >
+                                Log out
+                            </button>
+                        </div>
+
+                        {saved && (
+                            <div style={{ background: "rgba(239,248,122,0.5)", border: `1.5px solid ${C.primary}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.primary, fontFamily: inter, fontWeight: 600, textAlign: "center" }}>
+                                ✓ Profile updated
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {mode === "edit" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                        {/* Back button */}
+                        <button
+                            onClick={() => { setMode("view"); setError(""); setImageFile(null); setPreview(profile?.profilePic || null); }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "rgba(30,58,43,0.5)", fontSize: 13, fontFamily: inter, fontWeight: 600, padding: 0, marginBottom: 4 }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                                <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            Back to profile
+                        </button>
+
+                        {/* Profile pic upload */}
+                        <div>
+                            <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 10, fontFamily: inter }}>
+                                Profile picture
+                            </label>
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                                <div style={{
+                                    width: 64, height: 64, borderRadius: "50%",
+                                    border: `2px solid ${C.primary}`, background: C.lavender,
+                                    overflow: "hidden", flexShrink: 0,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                }}>
+                                    {preview
+                                        ? <img src={preview.startsWith("blob:") ? preview : toAbsoluteUrl(preview)} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                        : <svg width="26" height="26" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="12" r="6" stroke={C.primary} strokeWidth="2" opacity="0.4" /><path d="M 4 28 Q 4 20 16 20 Q 28 20 28 28" stroke={C.primary} strokeWidth="2" strokeLinecap="round" opacity="0.4" /></svg>
+                                    }
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        style={{ padding: "8px 16px", background: C.primary, color: C.accent, border: "none", borderRadius: 100, fontSize: 12, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}
+                                    >
+                                        {preview ? "Change photo" : "Upload photo"}
+                                    </button>
+                                    {preview && (
+                                        <button onClick={handleRemovePic}
+                                                style={{ padding: "8px 16px", background: "transparent", color: C.primary, border: `1.5px solid ${C.primary}`, borderRadius: 100, fontSize: 12, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
+                                            Remove
+                                        </button>
+                                    )}
+                                    <span style={{ fontSize: 11, color: "#3a5c48", fontFamily: inter }}>JPG, PNG · Max 5MB</span>
+                                </div>
+                            </div>
+                            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} style={{ display: "none" }} />
+                        </div>
+
+                        {/* Name */}
+                        <FormField label="Display name">
+                            <input className="auth-input" name="name" placeholder="Your name" value={form.name} onChange={handleChange} />
+                        </FormField>
+
+                        {/* Bio */}
+                        <FormField label="Bio">
+              <textarea className="auth-input" name="bio" placeholder="A short bio..." value={form.bio} onChange={handleChange}
+                        rows={3} style={{ resize: "none", borderRadius: 14, lineHeight: 1.5 }} />
+                        </FormField>
+
+                        {/* Relationship status */}
+                        <FormField label="Relationship status">
+                            <select className="auth-input" name="relationshipStatus" value={form.relationshipStatus} onChange={handleChange}
+                                    style={{ cursor: "pointer", appearance: "none" }}>
+                                {RELATIONSHIP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                        </FormField>
+
+                        {/* Private toggle */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(30,58,43,0.06)", borderRadius: 14, padding: "14px 16px" }}>
+                            <div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: C.primary, fontFamily: inter }}>Private account</div>
+                                <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", marginTop: 2, fontFamily: inter }}>Hide from search and friend lists</div>
+                            </div>
+                            <div onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}
+                                 style={{ width: 46, height: 24, borderRadius: 100, border: `2px solid ${C.primary}`, cursor: "pointer", display: "flex", alignItems: "center", padding: 2, background: form.isPrivate ? C.primary : "transparent", transition: "background 0.2s" }}>
+                                <div style={{ width: 16, height: 16, borderRadius: "50%", background: form.isPrivate ? C.accent : C.primary, transition: "transform 0.2s", transform: form.isPrivate ? "translateX(22px)" : "translateX(0)" }} />
+                            </div>
+                        </div>
+
+                        {error && <div style={{ background: "rgba(30,58,43,0.08)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.primary, fontFamily: inter }}>{error}</div>}
+
+                        <button
+                            onClick={handleSave} disabled={saving}
+                            style={{ padding: "13px", background: C.primary, color: C.accent, border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700, fontFamily: inter, cursor: "pointer", opacity: saving ? 0.6 : 1 }}
+                        >
+                            {saving ? "Saving..." : "Save changes"}
+                        </button>
+                    </div>
+                )}
+            </div>
+        </PanelWrapper>
+    );
+}
 
 const RELATIONSHIP_OPTIONS = [
     { value: "", label: "Prefer not to say" },
@@ -529,95 +808,6 @@ const RELATIONSHIP_OPTIONS = [
     { value: "MARRIED", label: "Married" },
     { value: "COMPLICATED", label: "It's complicated" },
 ];
-
-function ProfilePanel({ onClose }) {
-    const [form, setForm] = useState({ name: "", bio: "", profilePic: "", relationshipStatus: "", isPrivate: false });
-    const [saved, setSaved] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-
-    const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
-
-    const handleSave = async () => {
-        setLoading(true); setError(""); setSaved(false);
-        try {
-            await updateProfile({ name: form.name, bio: form.bio || null, profilePic: form.profilePic || null, relationshipStatus: form.relationshipStatus || null });
-            await updatePrivacy(form.isPrivate);
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2500);
-        } catch (e) {
-            setError("Failed to save. Try again.");
-        } finally { setLoading(false); }
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-    };
-
-    return (
-        <PanelWrapper title="Your profile" onClose={onClose}>
-            <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-
-                    {/* Avatar preview */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                        <Avatar name={form.name || "?"} pic={form.profilePic} size={64} />
-                        <div>
-                            <div style={{ fontFamily: faro, fontSize: 18, fontWeight: 900, color: C.primary }}>{form.name || "Your name"}</div>
-                            <div style={{ fontSize: 13, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>Edit your profile below</div>
-                        </div>
-                    </div>
-
-                    <FormField label="Display name">
-                        <input className="auth-input" name="name" placeholder="Your name" value={form.name} onChange={handleChange} />
-                    </FormField>
-
-                    <FormField label="Bio">
-            <textarea className="auth-input" name="bio" placeholder="A short bio..." value={form.bio} onChange={handleChange}
-                      rows={3} style={{ resize: "none", borderRadius: 14, lineHeight: 1.5 }} />
-                    </FormField>
-
-                    <FormField label="Profile picture URL">
-                        <input className="auth-input" name="profilePic" placeholder="https://..." value={form.profilePic} onChange={handleChange} />
-                    </FormField>
-
-                    <FormField label="Relationship status">
-                        <select className="auth-input" name="relationshipStatus" value={form.relationshipStatus} onChange={handleChange}
-                                style={{ cursor: "pointer", appearance: "none" }}>
-                            {RELATIONSHIP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                    </FormField>
-
-                    {/* Private toggle */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(30,58,43,0.06)", borderRadius: 14, padding: "14px 16px" }}>
-                        <div>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: C.primary, fontFamily: inter }}>Private account</div>
-                            <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", marginTop: 2, fontFamily: inter }}>Hide from search and friend lists</div>
-                        </div>
-                        <div onClick={() => setForm({ ...form, isPrivate: !form.isPrivate })}
-                             style={{ width: 46, height: 24, borderRadius: 100, border: `2px solid ${C.primary}`, cursor: "pointer", display: "flex", alignItems: "center", padding: 2, background: form.isPrivate ? C.primary : "transparent", transition: "background 0.2s" }}>
-                            <div style={{ width: 16, height: 16, borderRadius: "50%", background: form.isPrivate ? C.accent : C.primary, transition: "transform 0.2s", transform: form.isPrivate ? "translateX(22px)" : "translateX(0)" }} />
-                        </div>
-                    </div>
-
-                    {error && <div style={{ background: "rgba(30,58,43,0.08)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.primary, fontFamily: inter }}>{error}</div>}
-                    {saved && <div style={{ background: "rgba(239,248,122,0.5)", border: `1.5px solid ${C.primary}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.primary, fontFamily: inter, fontWeight: 600 }}>✓ Profile saved</div>}
-
-                    <div style={{ display: "flex", gap: 10 }}>
-                        <button className="save-btn" onClick={handleSave} disabled={loading} style={{ flex: 1 }}>
-                            {loading ? "Saving..." : "Save changes"}
-                        </button>
-                        <button onClick={handleLogout} style={{ padding: "12px 20px", background: "transparent", color: "rgba(30,58,43,0.5)", border: `1.5px solid rgba(30,58,43,0.2)`, borderRadius: 100, fontSize: 13, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
-                            Log out
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </PanelWrapper>
-    );
-}
-
 // ─── SHARED HELPERS ───────────────────────────────────────────
 function PanelWrapper({ title, onClose, children }) {
     return (
