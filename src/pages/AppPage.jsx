@@ -58,7 +58,7 @@ export default function AppPage() {
         ws.onopen = () => console.log("WS connected");
         ws.onmessage = (e) => {
             const packet = JSON.parse(e.data);
-            if (packet.type === "RECEIVE_MESSAGE" || packet.type === "MESSAGE_DELIVERED") {
+            if (packet.type === "MESSAGE_DELIVERED") {
                 loadChats();
             }
         };
@@ -266,21 +266,40 @@ function ChatWindow({ convoId, sendWs, wsRef, onMessageSent }) {
 
     useEffect(() => {
         if (!wsRef?.current) return;
-        const original = wsRef.current.onmessage;
-        wsRef.current.onmessage = (e) => {
-            if (original) original(e);
+
+        const handler = (e) => {
             const packet = JSON.parse(e.data);
+
             if (packet.type === "RECEIVE_MESSAGE" && packet.payload.conversationId === convoId) {
-                setMessages(prev => [...prev, {
-                    messageId: packet.payload.messageId,
-                    senderId: packet.payload.senderId,
-                    content: packet.payload.content,
-                    sentAt: packet.payload.timestamp,
-                    isDeleted: false,
-                }]);
+                setMessages(prev => {
+                    const exists = prev.some(m => m.messageId === packet.payload.messageId);
+                    if (exists) return prev;
+                    return [...prev, {
+                        messageId: packet.payload.messageId,
+                        senderId: packet.payload.senderId,
+                        content: packet.payload.content,
+                        sentAt: packet.payload.timestamp,
+                        isDeleted: false,
+                    }];
+                });
                 setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+                onMessageSent();
+            }
+
+            if (packet.type === "MESSAGE_DELIVERED" && packet.payload.conversationId === convoId) {
+                setMessages(prev =>
+                    prev.map(m =>
+                        m.messageId > 1000000000000
+                            ? { ...m, messageId: packet.payload.messageId, sentAt: packet.payload.deliveredAt }
+                            : m
+                    )
+                );
+                onMessageSent();
             }
         };
+
+        wsRef.current.addEventListener("message", handler);
+        return () => wsRef.current?.removeEventListener("message", handler);
     }, [convoId, wsRef]);
 
     const loadMessages = async () => {
@@ -293,7 +312,19 @@ function ChatWindow({ convoId, sendWs, wsRef, onMessageSent }) {
 
     const handleSend = () => {
         if (!input.trim()) return;
-        sendWs({ type: "SEND_MESSAGE", payload: { conversationId: convoId, content: input.trim() } });
+        const content = input.trim();
+
+        const optimistic = {
+            messageId: Date.now(),
+            senderId: myUserId,
+            content: content,
+            sentAt: new Date().toISOString(),
+            isDeleted: false,
+        };
+        setMessages(prev => [...prev, optimistic]);
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+
+        sendWs({ type: "SEND_MESSAGE", payload: { conversationId: convoId, content } });
         setInput("");
         onMessageSent();
     };
@@ -359,7 +390,8 @@ function SearchPanel({ onClose, onStartChat }) {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [sent, setSent] = useState({});
+    const [selectedUser, setSelectedUser] = useState(null);
+    const [requestStatus, setRequestStatus] = useState({});
 
     useEffect(() => {
         if (!query.trim()) { setResults([]); return; }
@@ -374,6 +406,10 @@ function SearchPanel({ onClose, onStartChat }) {
         return () => clearTimeout(t);
     }, [query]);
 
+    const handleSelectUser = (user) => setSelectedUser(user);
+
+    const handleBack = () => setSelectedUser(null);
+
     const handleMessage = async (userId) => {
         try {
             const res = await createConversation(userId);
@@ -384,15 +420,85 @@ function SearchPanel({ onClose, onStartChat }) {
     const handleAddFriend = async (userId) => {
         try {
             await sendRequest(userId);
-            setSent(s => ({ ...s, [userId]: true }));
+            setRequestStatus(s => ({ ...s, [userId]: "sent" }));
         } catch (e) {}
     };
 
+    // User detail view
+    if (selectedUser) {
+        const status = requestStatus[selectedUser.userId];
+        return (
+            <PanelWrapper title="Profile" onClose={onClose}>
+                <div style={{ padding: "12px 24px 0" }}>
+                    <button onClick={handleBack} style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "rgba(30,58,43,0.5)", fontSize: 13, fontFamily: inter,
+                        fontWeight: 600, padding: 0, marginBottom: 20,
+                    }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Back to search
+                    </button>
+                </div>
+
+                <div style={{ flex: 1, padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+                    {/* Profile card */}
+                    <div style={{
+                        background: C.accent, borderRadius: 24, padding: "32px 24px",
+                        border: `2px solid ${C.primary}`,
+                        boxShadow: "4px 4px 0px rgba(30,58,43,0.12)",
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        textAlign: "center", gap: 12,
+                    }}>
+                        <Avatar name={selectedUser.name || selectedUser.username} pic={selectedUser.profilePic} size={80} />
+                        <div>
+                            <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-0.5px" }}>
+                                {selectedUser.name || selectedUser.username}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#3a5c48", fontFamily: inter, marginTop: 4 }}>
+                                @{selectedUser.username}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <button
+                            onClick={() => handleMessage(selectedUser.userId)}
+                            style={{
+                                padding: "13px", background: C.primary, color: C.accent,
+                                border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                                fontFamily: inter, cursor: "pointer",
+                            }}>
+                            Message
+                        </button>
+                        <button
+                            onClick={() => !status && handleAddFriend(selectedUser.userId)}
+                            disabled={!!status}
+                            style={{
+                                padding: "13px", background: "transparent", color: C.primary,
+                                border: `1.5px solid ${C.primary}`, borderRadius: 100,
+                                fontSize: 14, fontWeight: 600, fontFamily: inter,
+                                cursor: status ? "default" : "pointer",
+                                opacity: status ? 0.6 : 1,
+                            }}>
+                            {status === "sent" ? "Request sent ✓" : "Add friend"}
+                        </button>
+                    </div>
+                </div>
+            </PanelWrapper>
+        );
+    }
+
+    // Search list view
     return (
-        <PanelWrapper title="Search people" onClose={onClose}>
+        <PanelWrapper title="Search" onClose={onClose}>
             <div style={{ padding: "16px 24px", borderBottom: `1.5px solid ${C.border}` }}>
                 <div style={{ position: "relative" }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: 0.4 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                         style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", opacity: 0.4 }}>
                         <circle cx="11" cy="11" r="8" stroke={C.primary} strokeWidth="2" />
                         <path d="m21 21-4.35-4.35" stroke={C.primary} strokeWidth="2" strokeLinecap="round" />
                     </svg>
@@ -408,35 +514,45 @@ function SearchPanel({ onClose, onStartChat }) {
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
+                {!query && (
+                    <div style={{ textAlign: "center", padding: "40px 16px", color: "rgba(30,58,43,0.4)", fontSize: 13, fontFamily: inter }}>
+                        Type a username to search
+                    </div>
+                )}
                 {loading && <div style={{ textAlign: "center", padding: 24, color: "rgba(30,58,43,0.4)", fontSize: 13, fontFamily: inter }}>Searching...</div>}
                 {!loading && query && results.length === 0 && (
-                    <div style={{ textAlign: "center", padding: 24, color: "rgba(30,58,43,0.4)", fontSize: 13, fontFamily: inter }}>No users found</div>
+                    <div style={{ textAlign: "center", padding: 24, color: "rgba(30,58,43,0.4)", fontSize: 13, fontFamily: inter }}>No users found for "{query}"</div>
                 )}
                 {results.map((user) => (
-                    <div key={user.userId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 14, marginBottom: 4 }}>
-                        <Avatar name={user.username} pic={user.profilePic} size={44} />
+                    <div
+                        key={user.userId}
+                        onClick={() => handleSelectUser(user)}
+                        style={{
+                            display: "flex", alignItems: "center", gap: 12,
+                            padding: "10px 10px", borderRadius: 14, marginBottom: 4,
+                            cursor: "pointer", transition: "background 0.15s",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(30,58,43,0.05)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                    >
+                        <Avatar name={user.name || user.username} pic={user.profilePic} size={44} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>{user.name || user.username}</div>
-                            <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>@{user.username}</div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
+                                {user.name || user.username}
+                            </div>
+                            <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>
+                                @{user.username}
+                            </div>
                         </div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                            <button className="action-btn" onClick={() => handleMessage(user.userId)}
-                                    style={{ background: C.primary, color: C.accent, borderColor: C.primary }}>
-                                Message
-                            </button>
-                            <button className="action-btn" onClick={() => handleAddFriend(user.userId)}
-                                    disabled={sent[user.userId]}
-                                    style={{ background: sent[user.userId] ? "rgba(30,58,43,0.08)" : "transparent", color: C.primary, opacity: sent[user.userId] ? 0.6 : 1 }}>
-                                {sent[user.userId] ? "Sent ✓" : "Add"}
-                            </button>
-                        </div>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3, flexShrink: 0 }}>
+                            <path d="M9 18l6-6-6-6" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                     </div>
                 ))}
             </div>
         </PanelWrapper>
     );
 }
-
 // ─── FRIENDS PANEL ────────────────────────────────────────────
 import { getFriends, getPending as getPendingFn, acceptRequest, rejectRequest, removeFriend } from "../services/friendship";
 
@@ -444,6 +560,7 @@ function FriendsPanel({ onClose, onAccept }) {
     const [tab, setTab] = useState("friends");
     const [friends, setFriends] = useState([]);
     const [pending, setPending] = useState([]);
+    const [selectedFriend, setSelectedFriend] = useState(null);
 
     useEffect(() => { loadAll(); }, []);
 
@@ -458,23 +575,97 @@ function FriendsPanel({ onClose, onAccept }) {
     const handleAccept = async (senderId) => {
         try { await acceptRequest(senderId); loadAll(); onAccept(); } catch (e) {}
     };
+
     const handleReject = async (senderId) => {
         try { await rejectRequest(senderId); loadAll(); onAccept(); } catch (e) {}
     };
+
     const handleRemove = async (friendId) => {
-        try { await removeFriend(friendId); loadAll(); } catch (e) {}
+        try { await removeFriend(friendId); loadAll(); setSelectedFriend(null); } catch (e) {}
+    };
+
+    const handleMessage = async (friendId) => {
+        try {
+            const res = await createConversation(friendId);
+            onAccept(); // reuse to trigger chat open — pass callback properly if needed
+        } catch (e) {}
     };
 
     const TabBtn = ({ id, label, count }) => (
         <button onClick={() => setTab(id)} style={{
-            padding: "8px 20px", borderRadius: 100, border: "none", cursor: "pointer", fontFamily: inter,
-            fontSize: 13, fontWeight: 600, transition: "all 0.15s",
+            padding: "8px 20px", borderRadius: 100, border: "none",
+            cursor: "pointer", fontFamily: inter, fontSize: 13, fontWeight: 600,
+            transition: "all 0.15s",
             background: tab === id ? C.primary : "transparent",
             color: tab === id ? C.accent : C.primary,
         }}>
-            {label}{count > 0 && <span style={{ marginLeft: 6, background: C.accent, color: C.primary, borderRadius: 100, padding: "1px 6px", fontSize: 11 }}>{count}</span>}
+            {label}
+            {count > 0 && (
+                <span style={{ marginLeft: 6, background: C.accent, color: C.primary, borderRadius: 100, padding: "1px 7px", fontSize: 11 }}>
+          {count}
+        </span>
+            )}
         </button>
     );
+
+    // Friend profile view
+    if (selectedFriend) {
+        return (
+            <PanelWrapper title="Profile" onClose={onClose}>
+                <div style={{ padding: "12px 24px 0" }}>
+                    <button onClick={() => setSelectedFriend(null)} style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "rgba(30,58,43,0.5)", fontSize: 13, fontFamily: inter,
+                        fontWeight: 600, padding: 0, marginBottom: 20,
+                    }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Back to friends
+                    </button>
+                </div>
+
+                <div style={{ flex: 1, padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+                    <div style={{
+                        background: C.accent, borderRadius: 24, padding: "32px 24px",
+                        border: `2px solid ${C.primary}`,
+                        boxShadow: "4px 4px 0px rgba(30,58,43,0.12)",
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                        textAlign: "center", gap: 12,
+                    }}>
+                        <Avatar name={selectedFriend.friendUsername} pic={null} size={80} />
+                        <div>
+                            <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-0.5px" }}>
+                                {selectedFriend.friendUsername}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <button
+                            onClick={() => handleMessage(selectedFriend.friendId)}
+                            style={{
+                                padding: "13px", background: C.primary, color: C.accent,
+                                border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                                fontFamily: inter, cursor: "pointer",
+                            }}>
+                            Message
+                        </button>
+                        <button
+                            onClick={() => handleRemove(selectedFriend.friendId)}
+                            style={{
+                                padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",
+                                border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,
+                                fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                            }}>
+                            Remove friend
+                        </button>
+                    </div>
+                </div>
+            </PanelWrapper>
+        );
+    }
 
     return (
         <PanelWrapper title="Friends" onClose={onClose}>
@@ -482,40 +673,65 @@ function FriendsPanel({ onClose, onAccept }) {
                 <TabBtn id="friends" label="Friends" count={0} />
                 <TabBtn id="pending" label="Requests" count={pending.length} />
             </div>
+
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
                 {tab === "friends" && (
                     friends.length === 0
                         ? <EmptyListNote text="No friends yet. Search for people to connect." />
                         : friends.map((f) => (
-                            <div key={f.friendshipId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 14, marginBottom: 4 }}>
-                                <Avatar name={String(f.senderId)} size={44} />
-                                <div style={{ flex: 1 }}>
+                            <div
+                                key={f.friendshipId}
+                                onClick={() => setSelectedFriend(f)}
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 12,
+                                    padding: "10px 10px", borderRadius: 14, marginBottom: 4,
+                                    cursor: "pointer", transition: "background 0.15s",
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = "rgba(30,58,43,0.05)"}
+                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                            >
+                                <Avatar name={f.friendUsername} pic={null} size={44} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
-                                        User {f.senderId === f.receiverId ? f.senderId : (f.senderId)}
+                                        {f.friendUsername}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>
+                                        Tap to view profile
                                     </div>
                                 </div>
-                                <button className="action-btn" onClick={() => handleRemove(f.senderId)}
-                                        style={{ background: "transparent", color: "rgba(30,58,43,0.5)", borderColor: "rgba(30,58,43,0.2)", fontSize: 12 }}>
-                                    Remove
-                                </button>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3, flexShrink: 0 }}>
+                                    <path d="M9 18l6-6-6-6" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
                             </div>
                         ))
                 )}
+
                 {tab === "pending" && (
                     pending.length === 0
                         ? <EmptyListNote text="No pending requests." />
                         : pending.map((p) => (
-                            <div key={p.friendshipId} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 8px", borderRadius: 14, marginBottom: 4 }}>
+                            <div key={p.friendshipId} style={{
+                                display: "flex", alignItems: "center", gap: 12,
+                                padding: "10px 10px", borderRadius: 14, marginBottom: 4,
+                            }}>
                                 <Avatar name={String(p.senderId)} size={44} />
                                 <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>User {p.senderId}</div>
-                                    <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>Sent you a request</div>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
+                                        User {p.senderId}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>
+                                        Sent you a friend request
+                                    </div>
                                 </div>
                                 <div style={{ display: "flex", gap: 6 }}>
                                     <button className="action-btn" onClick={() => handleAccept(p.senderId)}
-                                            style={{ background: C.primary, color: C.accent, borderColor: C.primary }}>Accept</button>
+                                            style={{ background: C.primary, color: C.accent, borderColor: C.primary }}>
+                                        Accept
+                                    </button>
                                     <button className="action-btn" onClick={() => handleReject(p.senderId)}
-                                            style={{ background: "transparent", color: C.primary }}>Decline</button>
+                                            style={{ background: "transparent", color: C.primary }}>
+                                        Decline
+                                    </button>
                                 </div>
                             </div>
                         ))
