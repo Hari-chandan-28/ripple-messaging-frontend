@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { getChats } from "../services/messages";
 import { getPending } from "../services/friendship";
+import {StatusPicker} from "../components/StatusPicker.jsx";
 
 const toAbsoluteUrl = (url) => {
     if (!url) return null;
@@ -767,12 +768,13 @@ function ProfilePanel({ onClose }) {
                         </FormField>
 
                         {/* Relationship status */}
-                        <FormField label="Relationship status">
-                            <select className="auth-input" name="relationshipStatus" value={form.relationshipStatus} onChange={handleChange}
-                                    style={{ cursor: "pointer", appearance: "none" }}>
-                                {RELATIONSHIP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                        </FormField>
+                        <div>
+                            <label style={{fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 6, fontFamily: inter,}}>
+                                Relationship status
+                            </label>
+
+                            <StatusPicker value={form.relationshipStatus} onChange={(value) => setForm(prev => ({...prev, relationshipStatus: value,}))}/>
+                        </div>
 
                         {/* Private toggle */}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(30,58,43,0.06)", borderRadius: 14, padding: "14px 16px" }}>
