@@ -119,7 +119,12 @@ export default function AppPage() {
                             : view === "profile"
                                 ? <ProfilePanel onClose={() => setView("chats")} />
                                 : view === "friends"
-                                    ? <FriendsPanel onClose={() => setView("chats")} pendingCount={pendingCount} onAccept={loadPending} />
+                                    ? <FriendsPanel
+                                        onClose={() => setView("chats")}
+                                        pendingCount={pendingCount}
+                                        onAccept={loadPending}
+                                        onStartChat={(id) => { setActiveConvo(id); setView("chats"); }}
+                                    />
                                     : null
                 }
             </div>
@@ -381,7 +386,45 @@ function ChatWindow({ convoId, sendWs, wsRef, onMessageSent }) {
         </div>
     );
 }
-
+function ConfirmDialog({ message, onConfirm, onCancel }) {
+    return (
+        <div style={{
+            position: "fixed", inset: 0, background: "rgba(30,58,43,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1000, padding: 24,
+        }}>
+            <div style={{
+                background: C.bg, borderRadius: 24, padding: "28px 28px 24px",
+                border: `2px solid ${C.primary}`, maxWidth: 360, width: "100%",
+                boxShadow: "6px 6px 0px rgba(30,58,43,0.15)",
+            }}>
+                <p style={{ fontFamily: faro, fontSize: 18, fontWeight: 900, color: C.primary, margin: "0 0 20px", lineHeight: 1.3 }}>
+                    {message}
+                </p>
+                <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                        onClick={onConfirm}
+                        style={{
+                            flex: 1, padding: "12px", background: C.primary, color: C.accent,
+                            border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                            fontFamily: inter, cursor: "pointer",
+                        }}>
+                        Yes, confirm
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        style={{
+                            flex: 1, padding: "12px", background: "transparent", color: C.primary,
+                            border: `1.5px solid ${C.primary}`, borderRadius: 100,
+                            fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                        }}>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 // ─── SEARCH PANEL ─────────────────────────────────────────────
 import { searchUsers, sendRequest } from "../services/friendship";
 import { createConversation } from "../services/messages";
@@ -406,8 +449,24 @@ function SearchPanel({ onClose, onStartChat }) {
         return () => clearTimeout(t);
     }, [query]);
 
-    const handleSelectUser = (user) => setSelectedUser(user);
+    const [profileDetail, setProfileDetail] = useState(null);
+    const [loadingProfile, setLoadingProfile] = useState(false);
+    const [confirm, setConfirm] = useState(null);
 
+    const handleSelectUser = async (user) => {
+        setSelectedUser(user);
+        setLoadingProfile(true);
+        try {
+            const res = await getMyProfile(user.userId);
+            setProfileDetail(res.data);
+        } catch (e) {
+            setProfileDetail(null);
+        } finally { setLoadingProfile(false); }
+    };
+
+    const askConfirm = (message, action) => {
+        setConfirm({ message, onConfirm: async () => { setConfirm(null); await action(); } });
+    };
     const handleBack = () => setSelectedUser(null);
 
     const handleMessage = async (userId) => {
@@ -464,29 +523,99 @@ function SearchPanel({ onClose, onStartChat }) {
                     </div>
 
                     {/* Actions */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <button
-                            onClick={() => handleMessage(selectedUser.userId)}
-                            style={{
-                                padding: "13px", background: C.primary, color: C.accent,
-                                border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
-                                fontFamily: inter, cursor: "pointer",
-                            }}>
-                            Message
-                        </button>
-                        <button
-                            onClick={() => !status && handleAddFriend(selectedUser.userId)}
-                            disabled={!!status}
-                            style={{
-                                padding: "13px", background: "transparent", color: C.primary,
-                                border: `1.5px solid ${C.primary}`, borderRadius: 100,
-                                fontSize: 14, fontWeight: 600, fontFamily: inter,
-                                cursor: status ? "default" : "pointer",
-                                opacity: status ? 0.6 : 1,
-                            }}>
-                            {status === "sent" ? "Request sent ✓" : "Add friend"}
-                        </button>
-                    </div>
+                    {/* Actions based on friendship status */}
+                    {loadingProfile ? (
+                        <div style={{ textAlign: "center", fontSize: 13, color: "rgba(30,58,43,0.4)", fontFamily: inter }}>Loading...</div>
+                    ) : (
+                        <div style={{display: "flex", flexDirection: "column", gap: 10}}>
+                            {/* Always show message */}
+                            {profileDetail?.friendshipStatus === 2 && (
+                                <>
+                                    <button onClick={() => handleMessage(selectedUser.userId)} style={{
+                                        padding: "13px", background: C.primary, color: C.accent,
+                                        border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                                        fontFamily: inter, cursor: "pointer",
+                                    }}>Message</button>
+                                    <button onClick={() => askConfirm(`Remove ${selectedUser.name || selectedUser.username} from friends?`, async () => {
+                                        await removeFriend(selectedUser.userId);
+                                        setProfileDetail({ ...profileDetail, friendshipStatus: null, isSender: null });
+                                    })} style={{
+                                        padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",
+                                        border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,
+                                        fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                                    }}>Remove friend</button>
+                                </>
+                            )}
+
+                            {/* No connection — show Add friend */}
+                            {!profileDetail?.friendshipStatus && (
+                                <button
+                                    onClick={() => !requestStatus[selectedUser.userId] && handleAddFriend(selectedUser.userId)}
+                                    style={{
+                                        padding: "13px", background: "transparent", color: C.primary,
+                                        border: `1.5px solid ${C.primary}`, borderRadius: 100,
+                                        fontSize: 14, fontWeight: 600, fontFamily: inter,
+                                        cursor: requestStatus[selectedUser.userId] ? "default" : "pointer",
+                                        opacity: requestStatus[selectedUser.userId] ? 0.6 : 1,
+                                    }}>
+                                    {requestStatus[selectedUser.userId] ? "Request sent ✓" : "Add friend"}
+                                </button>
+                            )}
+
+                            {/* Pending — you sent */}
+                            {profileDetail?.friendshipStatus === 1 && profileDetail?.isSender === true && (
+                                <button onClick={() => askConfirm("Take back your friend request?", async () => {
+                                    await rejectRequest(selectedUser.userId);
+                                    setProfileDetail({...profileDetail, friendshipStatus: null});
+                                })} style={{
+                                    padding: "13px", background: "rgba(30,58,43,0.08)", color: C.primary,
+                                    border: `1.5px solid ${C.primary}`, borderRadius: 100,
+                                    fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                                }}>
+                                    Request sent — take back?
+                                </button>
+                            )}
+
+                            {/* Pending — they sent to you */}
+                            {profileDetail?.friendshipStatus === 1 && profileDetail?.isSender === false && (
+                                <div style={{display: "flex", gap: 10}}>
+                                    <button onClick={async () => {
+                                        await acceptRequest(selectedUser.userId);
+                                        setProfileDetail({...profileDetail, friendshipStatus: 2});
+                                    }} style={{
+                                        flex: 1, padding: "13px", background: C.primary, color: C.accent,
+                                        border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                                        fontFamily: inter, cursor: "pointer",
+                                    }}>Accept
+                                    </button>
+                                    <button onClick={() => askConfirm("Decline this request?", async () => {
+                                        await rejectRequest(selectedUser.userId);
+                                        setProfileDetail({...profileDetail, friendshipStatus: null});
+                                    })} style={{
+                                        flex: 1, padding: "13px", background: "transparent", color: C.primary,
+                                        border: `1.5px solid ${C.primary}`, borderRadius: 100,
+                                        fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                                    }}>Decline
+                                    </button>
+                                </div>
+                            )}
+
+                            {/*/!* Friends — show remove *!/*/}
+                            {/*    {profileDetail?.friendshipStatus === 2 && (*/}
+                            {/*    <button*/}
+                            {/*        onClick={() => askConfirm(`Remove ${selectedUser.name || selectedUser.username} from friends?`, async () => {*/}
+                            {/*            await removeFriend(selectedUser.userId);*/}
+                            {/*            setProfileDetail({...profileDetail, friendshipStatus: null});*/}
+                            {/*        })} style={{*/}
+                            {/*        padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",*/}
+                            {/*        border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,*/}
+                            {/*        fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",*/}
+                            {/*    }}>Remove friend</button>*/}
+                            {/*)}*/}
+                        </div>
+                    )}
+
+                    {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
                 </div>
             </PanelWrapper>
         );
@@ -556,11 +685,12 @@ function SearchPanel({ onClose, onStartChat }) {
 // ─── FRIENDS PANEL ────────────────────────────────────────────
 import { getFriends, getPending as getPendingFn, acceptRequest, rejectRequest, removeFriend } from "../services/friendship";
 
-function FriendsPanel({ onClose, onAccept }) {
+function FriendsPanel({ onClose, onAccept, onStartChat }) {
     const [tab, setTab] = useState("friends");
     const [friends, setFriends] = useState([]);
     const [pending, setPending] = useState([]);
     const [selectedFriend, setSelectedFriend] = useState(null);
+    const [confirm, setConfirm] = useState(null); // { message, onConfirm }
 
     useEffect(() => { loadAll(); }, []);
 
@@ -572,23 +702,31 @@ function FriendsPanel({ onClose, onAccept }) {
         } catch (e) {}
     };
 
+    const askConfirm = (message, action) => {
+        setConfirm({ message, onConfirm: async () => { setConfirm(null); await action(); } });
+    };
+
     const handleAccept = async (senderId) => {
         try { await acceptRequest(senderId); loadAll(); onAccept(); } catch (e) {}
     };
 
-    const handleReject = async (senderId) => {
-        try { await rejectRequest(senderId); loadAll(); onAccept(); } catch (e) {}
+    const handleReject = (senderId, username) => {
+        askConfirm(`Decline request from ${username}?`, async () => {
+            try { await rejectRequest(senderId); loadAll(); onAccept(); } catch (e) {}
+        });
     };
 
-    const handleRemove = async (friendId) => {
-        try { await removeFriend(friendId); loadAll(); setSelectedFriend(null); } catch (e) {}
+    const handleRemove = (friendId, username) => {
+        askConfirm(`Remove ${username} from friends?`, async () => {
+            try { await removeFriend(friendId); loadAll(); setSelectedFriend(null); } catch (e) {}
+        });
     };
 
     const handleMessage = async (friendId) => {
         try {
             const res = await createConversation(friendId);
-            onAccept(); // reuse to trigger chat open — pass callback properly if needed
-        } catch (e) {}
+            onStartChat(res.data);
+        } catch (e) { console.error(e); }
     };
 
     const TabBtn = ({ id, label, count }) => (
@@ -612,12 +750,12 @@ function FriendsPanel({ onClose, onAccept }) {
     if (selectedFriend) {
         return (
             <PanelWrapper title="Profile" onClose={onClose}>
+                {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
                 <div style={{ padding: "12px 24px 0" }}>
                     <button onClick={() => setSelectedFriend(null)} style={{
-                        display: "flex", alignItems: "center", gap: 6,
-                        background: "none", border: "none", cursor: "pointer",
-                        color: "rgba(30,58,43,0.5)", fontSize: 13, fontFamily: inter,
-                        fontWeight: 600, padding: 0, marginBottom: 20,
+                        display: "flex", alignItems: "center", gap: 6, background: "none",
+                        border: "none", cursor: "pointer", color: "rgba(30,58,43,0.5)",
+                        fontSize: 13, fontFamily: inter, fontWeight: 600, padding: 0, marginBottom: 20,
                     }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                             <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -625,7 +763,6 @@ function FriendsPanel({ onClose, onAccept }) {
                         Back to friends
                     </button>
                 </div>
-
                 <div style={{ flex: 1, padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
                     <div style={{
                         background: C.accent, borderRadius: 24, padding: "32px 24px",
@@ -635,32 +772,21 @@ function FriendsPanel({ onClose, onAccept }) {
                         textAlign: "center", gap: 12,
                     }}>
                         <Avatar name={selectedFriend.friendUsername} pic={null} size={80} />
-                        <div>
-                            <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-0.5px" }}>
-                                {selectedFriend.friendUsername}
-                            </div>
+                        <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-0.5px" }}>
+                            {selectedFriend.friendUsername}
                         </div>
                     </div>
-
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <button
-                            onClick={() => handleMessage(selectedFriend.friendId)}
-                            style={{
-                                padding: "13px", background: C.primary, color: C.accent,
-                                border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
-                                fontFamily: inter, cursor: "pointer",
-                            }}>
-                            Message
-                        </button>
-                        <button
-                            onClick={() => handleRemove(selectedFriend.friendId)}
-                            style={{
-                                padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",
-                                border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,
-                                fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
-                            }}>
-                            Remove friend
-                        </button>
+                        <button onClick={() => handleMessage(selectedFriend.friendId)} style={{
+                            padding: "13px", background: C.primary, color: C.accent,
+                            border: "none", borderRadius: 100, fontSize: 14, fontWeight: 700,
+                            fontFamily: inter, cursor: "pointer",
+                        }}>Message</button>
+                        <button onClick={() => handleRemove(selectedFriend.friendId, selectedFriend.friendUsername)} style={{
+                            padding: "13px", background: "transparent", color: "rgba(30,58,43,0.6)",
+                            border: "1.5px solid rgba(30,58,43,0.2)", borderRadius: 100,
+                            fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer",
+                        }}>Remove friend</button>
                     </div>
                 </div>
             </PanelWrapper>
@@ -669,35 +795,28 @@ function FriendsPanel({ onClose, onAccept }) {
 
     return (
         <PanelWrapper title="Friends" onClose={onClose}>
+            {confirm && <ConfirmDialog message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
             <div style={{ padding: "12px 24px", borderBottom: `1.5px solid ${C.border}`, display: "flex", gap: 6 }}>
                 <TabBtn id="friends" label="Friends" count={0} />
                 <TabBtn id="pending" label="Requests" count={pending.length} />
             </div>
-
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
                 {tab === "friends" && (
                     friends.length === 0
                         ? <EmptyListNote text="No friends yet. Search for people to connect." />
                         : friends.map((f) => (
-                            <div
-                                key={f.friendshipId}
-                                onClick={() => setSelectedFriend(f)}
-                                style={{
-                                    display: "flex", alignItems: "center", gap: 12,
-                                    padding: "10px 10px", borderRadius: 14, marginBottom: 4,
-                                    cursor: "pointer", transition: "background 0.15s",
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.background = "rgba(30,58,43,0.05)"}
-                                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                            <div key={f.friendshipId} onClick={() => setSelectedFriend(f)} style={{
+                                display: "flex", alignItems: "center", gap: 12,
+                                padding: "10px 10px", borderRadius: 14, marginBottom: 4,
+                                cursor: "pointer", transition: "background 0.15s",
+                            }}
+                                 onMouseEnter={e => e.currentTarget.style.background = "rgba(30,58,43,0.05)"}
+                                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                             >
                                 <Avatar name={f.friendUsername} pic={null} size={44} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
-                                        {f.friendUsername}
-                                    </div>
-                                    <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>
-                                        Tap to view profile
-                                    </div>
+                                    <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>{f.friendUsername}</div>
+                                    <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>Tap to view profile</div>
                                 </div>
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3, flexShrink: 0 }}>
                                     <path d="M9 18l6-6-6-6" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -714,10 +833,10 @@ function FriendsPanel({ onClose, onAccept }) {
                                 display: "flex", alignItems: "center", gap: 12,
                                 padding: "10px 10px", borderRadius: 14, marginBottom: 4,
                             }}>
-                                <Avatar name={String(p.senderId)} size={44} />
+                                <Avatar name={p.friendUsername || String(p.senderId)} size={44} />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
-                                        User {p.senderId}
+                                        {p.friendUsername || `User ${p.senderId}`}
                                     </div>
                                     <div style={{ fontSize: 12, color: "rgba(30,58,43,0.5)", fontFamily: inter }}>
                                         Sent you a friend request
@@ -728,7 +847,7 @@ function FriendsPanel({ onClose, onAccept }) {
                                             style={{ background: C.primary, color: C.accent, borderColor: C.primary }}>
                                         Accept
                                     </button>
-                                    <button className="action-btn" onClick={() => handleReject(p.senderId)}
+                                    <button className="action-btn" onClick={() => handleReject(p.senderId, p.friendUsername)}
                                             style={{ background: "transparent", color: C.primary }}>
                                         Decline
                                     </button>
@@ -740,7 +859,6 @@ function FriendsPanel({ onClose, onAccept }) {
         </PanelWrapper>
     );
 }
-
 // ─── PROFILE PANEL ────────────────────────────────────────────
 import { getMyProfile, updateProfile, updatePrivacy, uploadProfilePic } from "../services/profile";
 import { getMyUserId } from "../services/auth";
