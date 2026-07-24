@@ -4,6 +4,7 @@ import { getChats, getMessages, createConversation, editMessage, deleteMessage }
 import { getFriends, getPending as getPendingFn, sendRequest, acceptRequest, rejectRequest, removeFriend, searchUsers } from "../services/friendship";
 import { getMyProfile, updateProfile, updatePrivacy, uploadProfilePic } from "../services/profile";
 import { getMyUserId } from "../services/auth";
+import {StatusPicker} from "../components/StatusPicker.jsx";
 
 const C = {
     bg: "#f8f4f0",
@@ -999,11 +1000,14 @@ function ProfilePanel({ onClose }) {
                         <FormField label="Bio">
                             <textarea className="auth-input" name="bio" placeholder="A short bio..." value={form.bio} onChange={handleChange} rows={3} style={{ resize: "none", borderRadius: 14, lineHeight: 1.5 }} />
                         </FormField>
-                        <FormField label="Relationship status">
-                            <select className="auth-input" name="relationshipStatus" value={form.relationshipStatus} onChange={handleChange} style={{ cursor: "pointer", appearance: "none" }}>
-                                {RELATIONSHIP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                        </FormField>
+                        {/* Relationship status */}
+                        <div>
+                            <label style={{fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 6, fontFamily: inter,}}>
+                                Relationship status
+                            </label>
+
+                            <StatusPicker value={form.relationshipStatus} onChange={(value) => setForm(prev => ({...prev, relationshipStatus: value,}))}/>
+                        </div>
 
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(30,58,43,0.06)", borderRadius: 14, padding: "14px 16px" }}>
                             <div>
