@@ -833,7 +833,7 @@ function FriendsPanel({ onClose, onAccept, onStartChat }) {
                                 display: "flex", alignItems: "center", gap: 12,
                                 padding: "10px 10px", borderRadius: 14, marginBottom: 4,
                             }}>
-                                <Avatar name={p.friendUsername || String(p.senderId)} size={44} />
+ile                                 <Avatar name={p.friendUsername || String(p.senderId)} pic={ p.profilePic}  size={44} />
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
                                         {p.friendUsername || `User ${p.senderId}`}
