@@ -560,7 +560,6 @@ export default function AppPage() {
         ws.onmessage = (e) => {
             const pkt = JSON.parse(e.data);
             switch (pkt.type) {
-                case "MESSAGE_DELIVERED": loadChats(); break;
                 case "FRIEND_REQUEST":
                     // Add to pending live
                     setPending(prev => {
@@ -586,6 +585,22 @@ export default function AppPage() {
                 case "FRIEND_REMOVED":
                     // Remove from friends list live
                     setFriends(prev => prev.filter(f => f.friendId !== pkt.payload.removerId));
+                    break;
+                case "MESSAGE_DELIVERED":
+                    setChats(prev => prev.map(c =>
+                        c.conversationId === pkt.payload.conversationId
+                            ? { ...c, lastMessage: pkt.payload.content, lastMessageAt: pkt.payload.deliveredAt }
+                            : c
+                    ));
+                    loadChats();
+                    break;
+                case "RECEIVE_MESSAGE":
+                    setChats(prev => prev.map(c =>
+                        c.conversationId === pkt.payload.conversationId
+                            ? { ...c, lastMessage: pkt.payload.content, lastMessageAt: pkt.payload.timestamp }
+                            : c
+                    ));
+                    loadChats();
                     break;
                 default: break;
             }
