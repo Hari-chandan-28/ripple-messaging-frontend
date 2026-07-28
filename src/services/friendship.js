@@ -7,3 +7,4 @@ export const acceptRequest = (userId) => api.put(`/api/friendship/accept/${userI
 export const rejectRequest = (userId) => api.delete(`/api/friendship/reject/${userId}`);
 export const removeFriend = (userId) => api.delete(`/api/friendship/remove/${userId}`);
 export const searchUsers = (username) => api.get(`/api/search/profile?username=${username}`);
+export const takebackRequest = (userId) => api.delete(`/api/friendship/takeback/${userId}`);
