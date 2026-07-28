@@ -13,6 +13,7 @@ import {
     getMyProfile, updateProfile,
     updatePrivacy, uploadProfilePic
 } from "../services/profile";
+import {StatusPicker} from "../components/StatusPicker.jsx";
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────
 const C = {
@@ -318,7 +319,7 @@ function ProfileView({ userId, myUserId, onStartChat, onFriendshipChange, onEdit
                         padding: "4px 14px", borderRadius: 100, fontSize: 12, fontWeight: 600,
                         border: `1.5px solid ${C.primary}`, fontFamily: inter,
                     }}>
-            {RL[profile.relationshipStatus] || profile.relationshipStatus}
+            {profile.relationshipStatus}
           </span>
                 )}
 
@@ -471,9 +472,10 @@ function OwnProfileEdit({ profile, onSaved, onCancel }) {
             {/* Relationship status */}
             <div>
                 <label style={{ fontSize: 13, fontWeight: 600, color: C.primary, display: "block", marginBottom: 5, fontFamily: inter }}>Relationship status</label>
-                <select className="auth-input" name="relationshipStatus" value={form.relationshipStatus} onChange={handleChange} style={{ cursor: "pointer", appearance: "none" }}>
-                    {RL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <StatusPicker
+                    value={form.relationshipStatus}
+                    onChange={(val) => setForm({ ...form, relationshipStatus: val })}
+                />
             </div>
 
             {/* Private toggle */}
