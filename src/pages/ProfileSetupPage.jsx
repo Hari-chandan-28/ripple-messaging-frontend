@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Logo from "../assets/icons/logo.svg?react";
 import {StatusPicker} from "../components/StatusPicker.jsx";
+import {uploadProfilePic} from "../services/profile.js";
 
 const C = {
     bg: "#f8f4f0",
@@ -146,6 +147,7 @@ export default function ProfileSetupPage() {
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef(null);
     const navigate = useNavigate();
+    const [imageFile, setImageFile] = useState(null);
 
     const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -155,6 +157,7 @@ export default function ProfileSetupPage() {
         if (!file.type.startsWith("image/")) { setError("Please select an image file."); return; }
         if (file.size > 5 * 1024 * 1024) { setError("Image must be under 5MB."); return; }
         setError("");
+        setImageFile(file);
         setPreview(URL.createObjectURL(file));
     };
 
@@ -168,10 +171,14 @@ export default function ProfileSetupPage() {
         if (!form.name.trim()) { setError("Display name is required."); return; }
         setLoading(true);
         try {
+            let picUrl = null;
+            if (imageFile) {
+                picUrl = await uploadProfilePic(imageFile);
+            }
             await api.post("/api/profile/create", {
                 name: form.name,
                 bio: form.bio || null,
-                profilePic: null,
+                profilePic: picUrl,
                 relationshipStatus: form.relationshipStatus || null,
                 isPrivate: form.isPrivate,
             });
