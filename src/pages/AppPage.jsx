@@ -866,6 +866,7 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                     return [...prev, {
                         messageId: pkt.payload.messageId,
                         senderId: pkt.payload.senderId,
+                        senderUsername: pkt.payload.senderUsername,
                         content: pkt.payload.content,
                         sentAt: pkt.payload.timestamp,
                         isDeleted: false,
@@ -894,8 +895,17 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
         try {
             const r = await getMessages(convoId);
             setMessages(r.data);
+            // Initialize tick status for own messages loaded from DB
+            // All DB messages are at minimum "delivered" since they were saved
+            const initialStatuses = {};
+            r.data.forEach(msg => {
+                if (msg.senderId === myUserId) {
+                    initialStatuses[msg.messageId] = "delivered";
+                }
+            });
+            setReadStatuses(prev => ({ ...prev, ...initialStatuses }));
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "instant" }), 40);
-        } catch (e) {}
+        } catch {}
     };
 
     const send = () => {
@@ -941,6 +951,9 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
                 {messages.map(msg => {
                     const isOwn = msg.senderId === myUserId;
+                    const senderName = !isOwn && convoInfo?.type === "GROUP"
+                        ? (msg.senderUsername || `User ${msg.senderId}`)
+                        : null;
                     const time = formatTime(msg.sendAt || msg.sentAt);
                     return (
                         <div key={msg.messageId} style={{ display: "flex", justifyContent: isOwn ? "flex-end" : "flex-start" }}>
@@ -953,6 +966,14 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                                 border: isOwn ? "none" : `1.5px solid ${C.border}`,
                                 boxShadow: "0 1px 3px rgba(30,58,43,0.05)",
                             }}>
+                                {senderName && (
+                                    <div style={{
+                                        fontSize: 11, fontWeight: 700, color: C.primary,
+                                        fontFamily: faro, marginBottom: 3, opacity: 0.85,
+                                    }}>
+                                        {senderName}
+                                    </div>
+                                )}
                                 {msg.isDeleted
                                     ? <span style={{ opacity: 0.45, fontStyle: "italic" }}>This message was deleted</span>
                                     : msg.content
