@@ -178,7 +178,7 @@ function Avatar({ name, pic, size = 40, online, lastSeen }) {
 }
 
 function Ticks({ status }) {
-    const color = status === "read" ? "#60a5fa" : "rgba(30,58,43,0.4)";
+    const color = status === "read" ? "#60a5fa" : "#FFFFFF";
     if (status === "sent") return (
         <svg width="14" height="10" viewBox="0 0 14 10" fill="none" style={{ flexShrink: 0 }}>
             <path d="M1 5l3 3 5-7" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -676,7 +676,7 @@ function GroupCreateModal({ friends, onClose, onCreated }) {
 }
 
 // ─── GROUP DETAIL PANEL ───────────────────────────────────────
-function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
+function GroupDetailPanel({ convoId, friends, myUserId, onRefresh, onGroupDeleted }) {
     const [group, setGroup] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -688,6 +688,7 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
     const [showAdd, setShowAdd] = useState(false);
     const [selectedToAdd, setSelectedToAdd] = useState([]);
     const [confirm, setConfirm] = useState(null);
+    const [actionErr, setActionErr] = useState("");
     const fRef = useRef(null);
 
     useEffect(() => { loadGroupInfo(); }, [convoId]);
@@ -720,10 +721,15 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
             let pic = group?.profilePic || null;
             if (imgFile) pic = await uploadProfilePic(imgFile);
             await api.put("/api/groups/update", {
-                groupId: group.groupId, name: form.name,
-                description: form.description, profilePic: pic,
+                groupId: group.groupId,
+                name: form.name,
+                description: form.description,
+                profilePic: pic,
             });
-            await loadGroupInfo(); onRefresh(); setEditMode(false); setImgFile(null);
+            await loadGroupInfo();
+            onRefresh();
+            setEditMode(false);
+            setImgFile(null);
         } catch (e) { console.error(e); }
         finally { setSaving(false); }
     };
@@ -732,21 +738,77 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
         setConfirm({
             msg: `Remove ${username} from group?`,
             fn: async () => {
-                try { await api.delete(`/api/groups/${group.groupId}/remove/${memberId}`); await loadGroupInfo(); } catch {}
+                try {
+                    await api.delete(`/api/groups/${group.groupId}/remove/${memberId}`);
+                    setMembers([]); await loadGroupInfo();
+                } catch {}
+            }
+        });
+    };
+
+    // Role body is sent as plain string matching enum value
+    const handleChangeRole = (memberId, username, currentRole) => {
+        const newRole = currentRole === "MEMBER" ? "ADMIN" : "MEMBER";
+        const label = newRole === "ADMIN" ? "Make admin" : "Remove admin";
+        setConfirm({
+            msg: `${label} for ${username}?`,
+            fn: async () => {
+                try {
+                    await api.put(
+                        `/api/groups/${group.groupId}/role/${memberId}`,
+                        newRole,  // plain string — matches GroupRole enum
+                        { headers: { "Content-Type": "application/json" } }
+                    );
+                    setMembers([]); await loadGroupInfo();
+                } catch {}
+            }
+        });
+    };
+
+    const handleLeave = () => {
+        setConfirm({
+            msg: "Leave this group? You won't be able to rejoin unless added back.",
+            fn: async () => {
+                try {
+                    await api.delete(`/api/groups/leave/${group.groupId}`);
+                    onGroupDeleted?.();
+                } catch (e) {
+                    setActionErr(e.response?.data?.message || "Cannot leave the group.");
+                }
+            }
+        });
+    };
+
+    const handleDelete = () => {
+        setConfirm({
+            msg: `Delete "${group?.name}"? This cannot be undone. All messages will be lost.`,
+            fn: async () => {
+                try {
+                    await api.delete(`/api/groups/delete/${group.groupId}`);
+                    onGroupDeleted?.();
+                } catch (e) {
+                    setActionErr(e.response?.data?.message || "Failed to delete group.");
+                }
             }
         });
     };
 
     const handleAddMembers = async () => {
         try {
-            for (const id of selectedToAdd) await api.post(`/api/groups/${group.groupId}/add/${id}`);
-            setSelectedToAdd([]); setShowAdd(false); await loadGroupInfo();
+            for (const id of selectedToAdd) {
+                await api.post(`/api/groups/${group.groupId}/add/${id}`);
+            }
+            setSelectedToAdd([]);
+            setShowAdd(false);
+            setMembers([]);
+            await loadGroupInfo();
         } catch {}
     };
 
     const available = friends.filter(f => !members.some(m => m.memberId === f.friendId));
     const myRole = members.find(m => m.memberId === myUserId)?.role;
-    const isAdmin = myRole === "ADMIN" || myRole === "OWNER";
+    const isOwner = myRole === "OWNER";
+    const isAdmin = myRole === "ADMIN" || isOwner;
 
     if (loading) return (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontFamily: inter, fontSize: 13 }}>
@@ -757,12 +819,22 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
     return (
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
             {confirm && (
-                <ConfirmDialog message={confirm.msg} onConfirm={() => { setConfirm(null); confirm.fn(); }} onCancel={() => setConfirm(null)} />
+                <ConfirmDialog
+                    message={confirm.msg}
+                    onConfirm={() => { setConfirm(null); confirm.fn(); }}
+                    onCancel={() => setConfirm(null)}
+                />
             )}
 
-            <div style={{ background: C.accent, borderRadius: 22, padding: "24px 20px", border: `2px solid ${C.primary}`, boxShadow: "4px 4px 0 rgba(30,58,43,0.11)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10 }}>
+            {/* Group card */}
+            <div style={{
+                background: C.accent, borderRadius: 22, padding: "24px 20px",
+                border: `2px solid ${C.primary}`, boxShadow: "4px 4px 0 rgba(30,58,43,0.11)",
+                display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10,
+            }}>
                 {editMode ? (
                     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+                        {/* Group pic upload */}
                         <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
                             <div style={{ position: "relative", cursor: "pointer" }} onClick={() => fRef.current?.click()}>
                                 <div style={{ width: 72, height: 72, borderRadius: "50%", border: `2px solid ${C.primary}`, background: C.lavender, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -781,24 +853,30 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
                         </div>
                         <div>
                             <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 4, fontFamily: inter }}>Group name</label>
-                            <input className="auth-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={{ background: C.white }} />
+                            <input className="auth-input" value={form.name}
+                                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                                   style={{ background: C.white }} />
                         </div>
                         <div>
                             <label style={{ fontSize: 12, fontWeight: 600, color: C.primary, display: "block", marginBottom: 4, fontFamily: inter }}>Description</label>
-                            <textarea className="auth-input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                            <textarea className="auth-input" value={form.description}
+                                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                                       rows={2} style={{ resize: "none", borderRadius: 14, background: C.white }} />
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
                             <button className="primary-btn" onClick={handleSave} disabled={saving} style={{ fontSize: 13, padding: "10px" }}>
                                 {saving ? "Saving..." : "Save"}
                             </button>
-                            <button className="secondary-btn" onClick={() => { setEditMode(false); setImgFile(null); setPreview(group?.profilePic || null); }} style={{ fontSize: 13, padding: "10px" }}>
+                            <button className="secondary-btn"
+                                    onClick={() => { setEditMode(false); setImgFile(null); setPreview(group?.profilePic || null); }}
+                                    style={{ fontSize: 13, padding: "10px" }}>
                                 Cancel
                             </button>
                         </div>
                     </div>
                 ) : (
                     <>
+                        {/* Group avatar */}
                         <div style={{ width: 72, height: 72, borderRadius: "50%", border: `2px solid ${C.primary}`, background: C.lavender, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                             {preview
                                 ? <img src={toUrl(preview)} alt="group" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -806,8 +884,18 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
                             }
                         </div>
                         <div style={{ fontFamily: faro, fontSize: 20, fontWeight: 900, color: C.primary }}>{group?.name}</div>
-                        {group?.description && <div style={{ fontSize: 13, color: "#3a5c48", fontFamily: inter }}>{group.description}</div>}
+                        {group?.description && (
+                            <div style={{ fontSize: 13, color: "#3a5c48", fontFamily: inter }}>{group.description}</div>
+                        )}
                         <div style={{ fontSize: 12, color: C.muted, fontFamily: inter }}>{members.length} members</div>
+                        {/* Role badge */}
+                        <span style={{
+                            fontSize: 11, fontWeight: 600, color: C.primary,
+                            background: isOwner ? C.accent : isAdmin ? C.lavender : "rgba(30,58,43,0.08)",
+                            padding: "3px 12px", borderRadius: 100, fontFamily: inter,
+                        }}>
+              You are {isOwner ? "Owner" : isAdmin ? "Admin" : "Member"}
+            </span>
                         {isAdmin && (
                             <button onClick={() => setEditMode(true)} style={{ padding: "8px 20px", background: C.primary, color: C.accent, border: "none", borderRadius: 100, fontSize: 12, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
                                 Edit group
@@ -817,28 +905,35 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
                 )}
             </div>
 
+            {/* Members section */}
             <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: C.muted, fontFamily: inter }}>Members</span>
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: C.muted, fontFamily: inter }}>
+            Members
+          </span>
                     {isAdmin && (
                         <button onClick={() => setShowAdd(s => !s)} style={{ padding: "5px 14px", background: C.primary, color: C.accent, border: "none", borderRadius: 100, fontSize: 12, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
-                            + Add members
+                            {showAdd ? "Cancel" : "+ Add"}
                         </button>
                     )}
                 </div>
 
+                {/* Add members picker */}
                 {showAdd && (
                     <div style={{ background: C.white, borderRadius: 16, padding: 14, marginBottom: 12, border: `1.5px solid ${C.border}` }}>
-                        <div style={{ fontSize: 13, color: C.muted, fontFamily: inter, marginBottom: 8 }}>Select friends to add</div>
+                        <div style={{ fontSize: 13, color: C.muted, fontFamily: inter, marginBottom: 8 }}>
+                            Select friends to add ({selectedToAdd.length} selected)
+                        </div>
                         {available.length === 0
                             ? <div style={{ fontSize: 13, color: C.muted, fontFamily: inter }}>All friends are already members.</div>
                             : available.map(f => (
                                 <div key={f.friendId}
                                      onClick={() => setSelectedToAdd(s => s.includes(f.friendId) ? s.filter(x => x !== f.friendId) : [...s, f.friendId])}
-                                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 6px", borderRadius: 10, cursor: "pointer", background: selectedToAdd.includes(f.friendId) ? "rgba(239,248,122,0.3)" : "transparent" }}>
+                                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 6px", borderRadius: 10, cursor: "pointer", background: selectedToAdd.includes(f.friendId) ? "rgba(239,248,122,0.3)" : "transparent", transition: "background .15s" }}>
                                     <Avatar name={f.friendName || f.friendUsername} pic={f.friendProfilePic} size={36} />
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: 13, fontWeight: 600, color: C.primary, fontFamily: inter }}>{f.friendName || f.friendUsername}</div>
+                                        <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>@{f.friendUsername}</div>
                                     </div>
                                     <div style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${C.primary}`, background: selectedToAdd.includes(f.friendId) ? C.primary : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                         {selectedToAdd.includes(f.friendId) && (
@@ -858,24 +953,46 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
                     </div>
                 )}
 
+                {/* Member list */}
                 {members.map(m => (
-                    <div key={m.memberId} style={{ display: "flex", alignItems: "center", gap: 11, padding: "8px 6px", borderRadius: 12, marginBottom: 2 }}>
+                    <div key={m.memberId} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 6px", borderRadius: 12, marginBottom: 2 }}>
                         <Avatar name={m.memberName || m.memberUsername} pic={m.memberProfilePic} size={40} />
-                        <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>{m.memberName || m.memberUsername}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
+                                {m.memberName || m.memberUsername}
+                                {m.memberId === myUserId && <span style={{ fontSize: 11, color: C.muted, marginLeft: 6, fontWeight: 400 }}>(you)</span>}
+                            </div>
                             <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>@{m.memberUsername}</div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{
-                  fontSize: 11, fontWeight: 600, color: C.primary,
-                  background: m.role === "OWNER" ? C.accent : m.role === "ADMIN" ? C.lavender : "rgba(30,58,43,0.08)",
-                  padding: "3px 9px", borderRadius: 100, fontFamily: inter,
-              }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                            {/* Role badge */}
+                            <span style={{
+                                fontSize: 10, fontWeight: 700, color: C.primary,
+                                background: m.role === "OWNER" ? C.accent : m.role === "ADMIN" ? C.lavender : "rgba(30,58,43,0.08)",
+                                padding: "2px 8px", borderRadius: 100, fontFamily: inter,
+                            }}>
                 {m.role}
               </span>
+                            {/* Make/Remove admin — owner only, not self, not other owners */}
+                            {isOwner && m.memberId !== myUserId && m.role !== "OWNER" && (
+                                <button
+                                    onClick={() => handleChangeRole(m.memberId, m.memberUsername || m.memberName, m.role)}
+                                    style={{
+                                        padding: "3px 9px",
+                                        background: m.role === "ADMIN" ? "rgba(207,220,255,0.6)" : "rgba(239,248,122,0.6)",
+                                        color: C.primary,
+                                        border: `1.5px solid ${C.primary}`,
+                                        borderRadius: 100, fontSize: 10, fontWeight: 600,
+                                        fontFamily: inter, cursor: "pointer",
+                                    }}>
+                                    {m.role === "MEMBER" ? "Make admin" : "Remove admin"}
+                                </button>
+                            )}
+                            {/* Remove from group — admin or above, not self, not owner */}
                             {isAdmin && m.memberId !== myUserId && m.role !== "OWNER" && (
-                                <button onClick={() => handleKick(m.memberId, m.memberUsername || m.memberName)}
-                                        style={{ padding: "4px 10px", background: "transparent", color: "rgba(30,58,43,0.4)", border: "1.5px solid rgba(30,58,43,0.15)", borderRadius: 100, fontSize: 11, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
+                                <button
+                                    onClick={() => handleKick(m.memberId, m.memberUsername || m.memberName)}
+                                    style={{ padding: "3px 9px", background: "transparent", color: "rgba(200,80,80,0.8)", border: "1.5px solid rgba(200,80,80,0.4)", borderRadius: 100, fontSize: 10, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
                                     Remove
                                 </button>
                             )}
@@ -883,10 +1000,36 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh }) {
                     </div>
                 ))}
             </div>
+
+            {/* Error message */}
+            {actionErr && (
+                <div style={{ background: "rgba(200,80,80,0.1)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#c85050", fontFamily: inter, border: "1.5px solid rgba(200,80,80,0.3)" }}>
+                    {actionErr}
+                    <button onClick={() => setActionErr("")} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", color: "#c85050", fontWeight: 700 }}>✕</button>
+                </div>
+            )}
+
+            {/* Danger zone */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 4, paddingTop: 16, borderTop: `1.5px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "rgba(200,80,80,0.7)", fontFamily: inter, marginBottom: 4 }}>
+                    Danger zone
+                </div>
+                {/* Leave — non-owners only */}
+                {!isOwner && (
+                    <button onClick={handleLeave} style={{ width: "100%", padding: "12px", background: "transparent", color: "#c85050", border: "1.5px solid #c85050", borderRadius: 100, fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
+                        Leave group
+                    </button>
+                )}
+                {/* Owner must delete or transfer before leaving */}
+                {isOwner && (
+                    <button onClick={handleDelete} style={{ width: "100%", padding: "12px", background: "transparent", color: "#c85050", border: "1.5px solid #c85050", borderRadius: 100, fontSize: 14, fontWeight: 600, fontFamily: inter, cursor: "pointer" }}>
+                        Delete group
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
-
 // ─── APP PAGE ─────────────────────────────────────────────────
 export default function AppPage() {
     const navigate = useNavigate();
@@ -976,8 +1119,11 @@ export default function AppPage() {
                     });
                     break;
                 case "READ_RECEIPT":
-                    setReadStatuses(prev => ({ ...prev, [pkt.payload.messageId]: "read" }));
-                    break;
+                    const newStatus = pkt.payload.allRead ? "read" : "delivered";
+                    setReadStatuses(prev => ({
+                        ...prev,
+                        [pkt.payload.messageId]: newStatus,
+                    }));                    break;
                 case "FRIEND_REQUEST":
                     setPending(prev => {
                         if (prev.some(p => p.senderId === pkt.payload.senderId)) return prev;
@@ -990,6 +1136,17 @@ export default function AppPage() {
                             friendProfilePic: null,
                         }];
                     });
+                    break;
+                case "GROUP_DELETED":
+                    loadChats();
+                    setChats(prev => prev.filter(c => c.groupId !== pkt.payload.groupId));
+                    if (activeConvoRef.current) {
+                        const deleted = chats.find(c => c.groupId === pkt.payload.groupId);
+                        if (deleted && activeConvoRef.current === deleted.conversationId) {
+                            setView("empty");
+                            setActiveConvo(null);
+                        }
+                    }
                     break;
                 case "REQUEST_ACCEPTED": loadFriends(); loadPending(); break;
                 case "FRIEND_REMOVED":
@@ -1193,10 +1350,27 @@ export default function AppPage() {
                     </div>
                 )}
 
+                {/*{view === "groupDetail" && groupDetailConvoId && (*/}
+                {/*    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>*/}
+                {/*        <PanelHeader title="Group Info" onClose={() => setView("chat")} />*/}
+                {/*        <GroupDetailPanel convoId={groupDetailConvoId} friends={friends} myUserId={myUserId} onRefresh={loadChats} />*/}
+                {/*    </div>*/}
+                {/*)}*/}
                 {view === "groupDetail" && groupDetailConvoId && (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                         <PanelHeader title="Group Info" onClose={() => setView("chat")} />
-                        <GroupDetailPanel convoId={groupDetailConvoId} friends={friends} myUserId={myUserId} onRefresh={loadChats} />
+                        <GroupDetailPanel
+                            convoId={groupDetailConvoId}
+                            friends={friends}
+                            myUserId={myUserId}
+                            onRefresh={loadChats}
+                            onGroupDeleted={() => {
+                                setView("empty");
+                                setActiveConvo(null);
+                                setGroupDetailConvoId(null);
+                                loadChats();
+                            }}
+                        />
                     </div>
                 )}
             </div>
