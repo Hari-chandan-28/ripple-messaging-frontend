@@ -1138,14 +1138,17 @@ export default function AppPage() {
                     });
                     break;
                 case "GROUP_DELETED":
-                    loadChats();
                     setChats(prev => prev.filter(c => c.groupId !== pkt.payload.groupId));
                     if (activeConvoRef.current) {
-                        const deleted = chats.find(c => c.groupId === pkt.payload.groupId);
-                        if (deleted && activeConvoRef.current === deleted.conversationId) {
-                            setView("empty");
-                            setActiveConvo(null);
-                        }
+                        setChats(prev => {
+                            const deleted = prev.find(c => c.groupId === pkt.payload.groupId);
+                            if (deleted && activeConvoRef.current === deleted.conversationId) {
+                                setView("empty");
+                                setActiveConvo(null);
+                                setGroupDetailConvoId(null);
+                            }
+                            return prev.filter(c => c.groupId !== pkt.payload.groupId);
+                        });
                     }
                     break;
                 case "REQUEST_ACCEPTED": loadFriends(); loadPending(); break;
@@ -1384,19 +1387,35 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const [input, setInput] = useState("");
     const [notFriends, setNotFriends] = useState(false);
     const [typing, setTyping] = useState(false);
+    const [editingMsg, setEditingMsg] = useState(null); // { messageId, content }
+    const [editInput, setEditInput] = useState("");
+    const [contextMenu, setContextMenu] = useState(null); // { messageId, x, y, isOwn, content }
+    const [confirm, setConfirm] = useState(null);
     const typingTimer = useRef(null);
     const bottomRef = useRef(null);
+    const editInputRef = useRef(null);
 
     const isGroup = !!convoInfo?.groupId;
     const isDirect = !isGroup;
-    const friendMatch = isDirect && friends.some(f => f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name);
+    const friendMatch = isDirect && friends.some(f =>
+        f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name
+    );
     const messagingBlocked = notFriends || (isDirect && messages.length > 0 && !friendMatch);
 
     useEffect(() => {
         if (!convoId) return;
         setNotFriends(false);
+        setContextMenu(null);
+        setEditingMsg(null);
         load();
     }, [convoId]);
+
+    // Close context menu on outside click
+    useEffect(() => {
+        const handler = () => setContextMenu(null);
+        window.addEventListener("click", handler);
+        return () => window.removeEventListener("click", handler);
+    }, []);
 
     useEffect(() => {
         if (!wsRef?.current) return;
@@ -1415,8 +1434,24 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                         isDeleted: false,
                     }];
                 });
-                scroll(); onMessageSent();
+                scroll();
+                onMessageSent();
                 sendWs({ type: "READ_RECEIPT", payload: { messageId: pkt.payload.messageId, conversationId: convoId } });
+            }
+            if (
+                pkt.type === "EDIT_MESSAGE" &&
+                pkt.payload.conversationId === convoId
+            ) {
+                setMessages(prev =>
+                    prev.map(msg =>
+                        msg.messageId === pkt.payload.messageId
+                            ? {
+                                ...msg,
+                                content: pkt.payload.content
+                            }
+                            : msg
+                    )
+                );
             }
 
             if (pkt.type === "MESSAGE_DELIVERED" && pkt.payload.conversationId === convoId) {
@@ -1425,12 +1460,19 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                         ? { ...m, messageId: pkt.payload.messageId, sentAt: pkt.payload.deliveredAt }
                         : m
                 ));
-                setReadStatuses(prev => ({ ...prev, [pkt.payload.messageId]: "delivered" }));
+                setReadStatuses(prev => {
+                    const updated = { ...prev };
+                    const tempKey = Object.keys(updated).find(k => Number(k) > 1_000_000_000_000);
+                    if (tempKey) delete updated[tempKey];
+                    updated[pkt.payload.messageId] = "delivered";
+                    return updated;
+                });
                 onMessageSent();
             }
 
             if (pkt.type === "READ_RECEIPT") {
-                setReadStatuses(prev => ({ ...prev, [pkt.payload.messageId]: "read" }));
+                const newStatus = pkt.payload.allRead ? "read" : "delivered";
+                setReadStatuses(prev => ({ ...prev, [pkt.payload.messageId]: newStatus }));
             }
 
             if (pkt.type === "TYPING" && pkt.payload.conversationId === convoId && pkt.payload.senderId !== myUserId) {
@@ -1451,12 +1493,19 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const load = async () => {
         try {
             const r = await getMessages(convoId);
-            setMessages(r.data);
             const init = {};
             r.data.forEach(msg => {
-                if (msg.senderId === myUserId) init[msg.messageId] = msg.isRead ? "read" : "delivered";
+                if (msg.senderId === myUserId) {
+                    init[msg.messageId] = msg.isRead ? "read" : "delivered";
+                }
             });
             setReadStatuses(prev => ({ ...prev, ...init }));
+            setMessages(r.data);
+            r.data.forEach(msg => {
+                if (msg.senderId !== myUserId && !msg.isDeleted) {
+                    sendWs({ type: "READ_RECEIPT", payload: { messageId: msg.messageId, conversationId: convoId } });
+                }
+            });
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "instant" }), 40);
         } catch {}
     };
@@ -1466,16 +1515,14 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const send = () => {
         if (!input.trim() || messagingBlocked) return;
         const content = input.trim();
-        const optimistic = {
-            messageId: Date.now(), senderId: myUserId,
-            senderUsername: "", content,
-            sentAt: new Date().toISOString(), isDeleted: false,
-        };
+        const tempId = Date.now();
+        const optimistic = { messageId: tempId, senderId: myUserId, senderUsername: "", content, sentAt: new Date().toISOString(), isDeleted: false };
         setMessages(prev => [...prev, optimistic]);
-        setReadStatuses(prev => ({ ...prev, [optimistic.messageId]: "sent" }));
+        setReadStatuses(prev => ({ ...prev, [tempId]: "sent" }));
         scroll();
         sendWs({ type: "SEND_MESSAGE", payload: { conversationId: convoId, content } });
-        setInput(""); onMessageSent();
+        setInput("");
+        onMessageSent();
         sendWs({ type: "TYPING", payload: { conversationId: convoId, isTyping: false } });
     };
 
@@ -1490,21 +1537,153 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
         }, 2000);
     };
 
-    const friendId = isDirect && friends.find(f => f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name)?.friendId;
+    // Right click / long press handler
+    const handleContextMenu = (e, msg, isOwn) => {
+        e.preventDefault();
+        if (msg.isDeleted) return;
+        setContextMenu({
+            messageId: msg.messageId,
+            content: msg.content,
+            isOwn,
+            x: e.clientX,
+            y: e.clientY,
+        });
+    };
+
+    // Start editing a message
+    const startEdit = (messageId, content) => {
+        setContextMenu(null);
+        setEditingMsg({ messageId, content });
+        setEditInput(content);
+        setTimeout(() => editInputRef.current?.focus(), 50);
+    };
+
+    // Save edited message
+    const saveEdit = async () => {
+        if (!editInput.trim() || editInput.trim() === editingMsg.content) {
+            setEditingMsg(null);
+            return;
+        }
+
+        sendWs({
+            type: "EDIT_MESSAGE",
+            payload: {
+                conversationId: convoId,
+                messageId: editingMsg.messageId,
+                content: editInput.trim()
+            }
+        });
+
+        setEditingMsg(null);
+    };
+
+    const cancelEdit = () => { setEditingMsg(null); setEditInput(""); };
+
+    // Delete a message
+    const deleteMessage = (messageId, deleteType) => {
+        setContextMenu(null);
+        setConfirm({
+            msg: deleteType === "deleteForEveryone"
+                ? "Delete for everyone? This cannot be undone."
+                : "Delete for yourself?",
+            fn: async () => {
+                try {
+                    await api.delete(`/api/message/delete/${messageId}?deleteType=${deleteType}`);
+                    if (deleteType === "deleteForEveryone") {
+                        setMessages(prev => prev.map(m =>
+                            m.messageId === messageId ? { ...m, isDeleted: true, content: "" } : m
+                        ));
+                    } else {
+                        setMessages(prev => prev.filter(m => m.messageId !== messageId));
+                    }
+                } catch (e) { console.error(e); }
+            }
+        });
+    };
+
+    const friendId = isDirect && friends.find(f =>
+        f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name
+    )?.friendId;
     const isOnline = friendId ? onlineUsers[friendId] : false;
 
     return (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+            {confirm && (
+                <ConfirmDialog
+                    message={confirm.msg}
+                    onConfirm={() => { setConfirm(null); confirm.fn(); }}
+                    onCancel={() => setConfirm(null)}
+                />
+            )}
+
+            {/* Context menu */}
+            {contextMenu && (
+                <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                        position: "fixed",
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        background: C.white,
+                        border: `1.5px solid ${C.border}`,
+                        borderRadius: 14,
+                        boxShadow: "0 8px 24px rgba(30,58,43,0.15)",
+                        zIndex: 999,
+                        overflow: "hidden",
+                        minWidth: 160,
+                    }}
+                >
+                    {contextMenu.isOwn && (
+                        <button
+                            onClick={() => startEdit(contextMenu.messageId, contextMenu.content)}
+                            style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 14, fontFamily: inter, color: C.primary, textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={C.primary} strokeWidth="2" strokeLinecap="round" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke={C.primary} strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            Edit message
+                        </button>
+                    )}
+                    {contextMenu.isOwn && (
+                        <button
+                            onClick={() => deleteMessage(contextMenu.messageId, "deleteForEveryone")}
+                            style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 14, fontFamily: inter, color: "#c85050", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                                <polyline points="3,6 5,6 21,6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M10 11v6M14 11v6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                            Delete for everyone
+                        </button>
+                    )}
+                    <button
+                        onClick={() => deleteMessage(contextMenu.messageId, "deleteForMe")}
+                        style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", cursor: "pointer", fontSize: 14, fontFamily: inter, color: "#c85050", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <polyline points="3,6 5,6 21,6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                        Delete for me
+                    </button>
+                </div>
+            )}
 
             {/* Header */}
-            <div style={{ padding: "11px 18px", borderBottom: `1.5px solid ${C.border}`, display: "flex", alignItems: "center", gap: 11, flexShrink: 0, cursor: "pointer" }}
-                 onClick={() => {
-                     if (isGroup) onOpenGroupDetail?.(convoId);
-                     else if (friendId) onOpenProfile?.(friendId);
-                 }}>
+            <div
+                style={{ padding: "11px 18px", borderBottom: `1.5px solid ${C.border}`, display: "flex", alignItems: "center", gap: 11, flexShrink: 0, cursor: "pointer" }}
+                onClick={() => {
+                    if (isGroup) onOpenGroupDetail?.(convoId);
+                    else if (friendId) onOpenProfile?.(friendId);
+                }}
+            >
                 <Avatar name={convoInfo?.name || "Chat"} pic={convoInfo?.profilePic} size={38} online={isDirect ? isOnline : undefined} />
                 <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: faro, fontSize: 15, fontWeight: 900, color: C.primary }}>{convoInfo?.name || "Chat"}</div>
+                    <div style={{ fontFamily: faro, fontSize: 15, fontWeight: 900, color: C.primary }}>
+                        {convoInfo?.name || "Chat"}
+                    </div>
                     <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>
                         {typing ? "typing..." : isGroup ? "Tap to view group info" : isOnline ? "Online" : "Tap to view profile"}
                     </div>
@@ -1518,35 +1697,70 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                     const time = formatTime(msg.sendAt || msg.sentAt);
                     const tickStatus = isOwn ? (readStatuses[msg.messageId] || "sent") : null;
                     const showSender = isGroup && !isOwn;
+                    const isEditing = editingMsg?.messageId === msg.messageId;
+
                     return (
                         <div key={msg.messageId} style={{ display: "flex", justifyContent: isOwn ? "flex-end" : "flex-start" }}>
-                            <div style={{
-                                maxWidth: "64%", padding: "9px 14px",
-                                borderRadius: isOwn ? "17px 17px 4px 17px" : "17px 17px 17px 4px",
-                                background: isOwn ? C.primary : C.white,
-                                color: isOwn ? C.accent : C.primary,
-                                fontSize: 14, lineHeight: 1.5, fontFamily: inter,
-                                border: isOwn ? "none" : `1.5px solid ${C.border}`,
-                                boxShadow: "0 1px 3px rgba(30,58,43,0.05)",
-                            }}>
-                                {showSender && (
-                                    <div style={{ fontSize: 11, fontWeight: 700, color: "#2d5540", fontFamily: faro, marginBottom: 3 }}>
-                                        {msg.senderUsername || `User ${msg.senderId}`}
+                            {isEditing ? (
+                                // Inline edit box
+                                <div style={{ maxWidth: "70%", width: "100%", display: "flex", flexDirection: "column", gap: 6, alignSelf: "flex-end" }}>
+                  <textarea
+                      ref={editInputRef}
+                      value={editInput}
+                      onChange={e => setEditInput(e.target.value)}
+                      onKeyDown={e => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                          if (e.key === "Escape") cancelEdit();
+                      }}
+                      style={{
+                          padding: "10px 14px", borderRadius: "17px 17px 4px 17px",
+                          background: C.primary, color: C.accent,
+                          border: `2px solid ${C.accent}`,
+                          fontSize: 14, fontFamily: inter, lineHeight: 1.5,
+                          resize: "none", outline: "none", width: "100%",
+                      }}
+                      rows={Math.min(4, editInput.split("\n").length + 1)}
+                  />
+                                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                        <button onClick={cancelEdit} style={{ padding: "5px 14px", background: "transparent", color: C.muted, border: `1.5px solid ${C.border}`, borderRadius: 100, fontSize: 12, fontFamily: inter, cursor: "pointer" }}>Cancel</button>
+                                        <button onClick={saveEdit} style={{ padding: "5px 14px", background: C.primary, color: C.accent, border: "none", borderRadius: 100, fontSize: 12, fontWeight: 700, fontFamily: inter, cursor: "pointer" }}>Save</button>
                                     </div>
-                                )}
-                                {msg.isDeleted
-                                    ? <span style={{ opacity: .45, fontStyle: "italic" }}>Deleted</span>
-                                    : msg.content
-                                }
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 3 }}>
-                                    {time && <span style={{ fontSize: 10, opacity: .45 }}>{time}</span>}
-                                    {isOwn && tickStatus && <Ticks status={tickStatus} />}
                                 </div>
-                            </div>
+                            ) : (
+                                <div
+                                    onContextMenu={e => handleContextMenu(e, msg, isOwn)}
+                                    onDoubleClick={e => { if (isOwn && !msg.isDeleted) handleContextMenu(e, msg, isOwn); }}
+                                    style={{
+                                        maxWidth: "64%", padding: "9px 14px",
+                                        borderRadius: isOwn ? "17px 17px 4px 17px" : "17px 17px 17px 4px",
+                                        background: isOwn ? C.primary : C.white,
+                                        color: isOwn ? C.accent : C.primary,
+                                        fontSize: 14, lineHeight: 1.5, fontFamily: inter,
+                                        border: isOwn ? "none" : `1.5px solid ${C.border}`,
+                                        boxShadow: "0 1px 3px rgba(30,58,43,0.05)",
+                                        cursor: "default", userSelect: "text",
+                                    }}
+                                >
+                                    {showSender && (
+                                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2d5540", fontFamily: faro, marginBottom: 3 }}>
+                                            {msg.senderUsername || `User ${msg.senderId}`}
+                                        </div>
+                                    )}
+                                    {msg.isDeleted
+                                        ? <span style={{ opacity: .45, fontStyle: "italic" }}>This message was deleted</span>
+                                        : msg.content
+                                    }
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 3 }}>
+                                        {time && <span style={{ fontSize: 10, opacity: .45 }}>{time}</span>}
+                                        {isOwn && tickStatus && <Ticks status={tickStatus} />}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
 
+                {/* Typing indicator */}
                 {typing && (
                     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 4 }}>
                         <div style={{ padding: "10px 16px", borderRadius: "17px 17px 17px 4px", background: C.white, border: `1.5px solid ${C.border}`, display: "flex", gap: 4, alignItems: "center" }}>
@@ -1556,7 +1770,6 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                         </div>
                     </div>
                 )}
-
                 <div ref={bottomRef} />
             </div>
 
@@ -1567,7 +1780,13 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                 </div>
             ) : (
                 <div style={{ padding: "9px 14px 13px", borderTop: `1.5px solid ${C.border}`, display: "flex", gap: 8, alignItems: "center" }}>
-                    <input className="msg-input" placeholder="Type a message..." value={input} onChange={onInputChange} onKeyDown={onKey} />
+                    <input
+                        className="msg-input"
+                        placeholder="Type a message..."
+                        value={input}
+                        onChange={onInputChange}
+                        onKeyDown={onKey}
+                    />
                     <button className="send-btn" onClick={send}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                             <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke={C.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -1578,7 +1797,6 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
         </div>
     );
 }
-
 // ─── SEARCH ───────────────────────────────────────────────────
 function SearchContent({ myUserId, onOpenProfile }) {
     const [q, setQ] = useState("");
