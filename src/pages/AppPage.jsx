@@ -1438,22 +1438,13 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                 onMessageSent();
                 sendWs({ type: "READ_RECEIPT", payload: { messageId: pkt.payload.messageId, conversationId: convoId } });
             }
-            if (
-                pkt.type === "EDIT_MESSAGE" &&
-                pkt.payload.conversationId === convoId
-            ) {
-                setMessages(prev =>
-                    prev.map(msg =>
-                        msg.messageId === pkt.payload.messageId
-                            ? {
-                                ...msg,
-                                content: pkt.payload.content
-                            }
-                            : msg
-                    )
-                );
+            if (pkt.type === "EDIT_MESSAGE" && pkt.payload.conversationId === convoId) {
+                setMessages(prev => prev.map(m =>
+                    m.messageId === pkt.payload.messageId
+                        ? { ...m, content: pkt.payload.content }
+                        : m
+                ));
             }
-
             if (pkt.type === "MESSAGE_DELIVERED" && pkt.payload.conversationId === convoId) {
                 setMessages(prev => prev.map(m =>
                     m.messageId > 1_000_000_000_000
@@ -1559,21 +1550,21 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     };
 
     // Save edited message
-    const saveEdit = async () => {
+    const saveEdit = () => {
         if (!editInput.trim() || editInput.trim() === editingMsg.content) {
             setEditingMsg(null);
             return;
         }
-
+        // Send via WebSocket — backend broadcasts EDIT_MESSAGE to all members
+        // including sender, so the WS handler updates local state
         sendWs({
             type: "EDIT_MESSAGE",
             payload: {
-                conversationId: convoId,
                 messageId: editingMsg.messageId,
-                content: editInput.trim()
+                conversationId: convoId,
+                content: editInput.trim(),
             }
         });
-
         setEditingMsg(null);
     };
 
