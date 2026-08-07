@@ -1155,6 +1155,18 @@ export default function AppPage() {
                 case "FRIEND_REMOVED":
                     setFriends(prev => prev.filter(f => f.friendId !== pkt.payload.removerId));
                     break;
+                case "EDIT_MESSAGE":
+                    // Update last message in chat list if this was the latest message
+                    setChats(prev => prev.map(c =>
+                        c.conversationId === pkt.payload.conversationId
+                            ? { ...c, lastMessage: pkt.payload.content }
+                            : c
+                    ));
+                    break;
+                case "DELETE_MESSAGE":
+                    // Reload chats to update last message tile
+                    loadChats();
+                    break;
                 case "ADDED_TO_GROUP": loadChats(); break;
                 default: break;
             }
@@ -1394,7 +1406,7 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const typingTimer = useRef(null);
     const bottomRef = useRef(null);
     const editInputRef = useRef(null);
-
+    const containerRef = useRef(null); // add this ref to the messages container div
     const isGroup = !!convoInfo?.groupId;
     const isDirect = !isGroup;
     const friendMatch = isDirect && friends.some(f =>
@@ -1416,6 +1428,10 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
         window.addEventListener("click", handler);
         return () => window.removeEventListener("click", handler);
     }, []);
+    // Auto scroll when messages change or typing indicator appears
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, typing]);
 
     useEffect(() => {
         if (!wsRef?.current) return;
@@ -1464,6 +1480,19 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             if (pkt.type === "READ_RECEIPT") {
                 const newStatus = pkt.payload.allRead ? "read" : "delivered";
                 setReadStatuses(prev => ({ ...prev, [pkt.payload.messageId]: newStatus }));
+            }
+            if (pkt.type === "DELETE_MESSAGE" && pkt.payload.conversationId === convoId) {
+                if (pkt.payload.deleteType === "deleteForEveryone") {
+                    setMessages(prev => prev.map(m =>
+                        m.messageId === pkt.payload.messageId
+                            ? { ...m, isDeleted: true, content: "" }
+                            : m
+                    ));
+                } else {
+                    // deleteForMe — remove from local list
+                    setMessages(prev => prev.filter(m => m.messageId !== pkt.payload.messageId));
+                }
+                onMessageSent(); // update chat list last message
             }
 
             if (pkt.type === "TYPING" && pkt.payload.conversationId === convoId && pkt.payload.senderId !== myUserId) {
@@ -1532,12 +1561,20 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const handleContextMenu = (e, msg, isOwn) => {
         e.preventDefault();
         if (msg.isDeleted) return;
+
+        const MENU_WIDTH = 200;
+        const MENU_HEIGHT = isOwn ? 132 : 44; // approximate heights
+
+        // Clamp to viewport
+        const x = Math.min(e.clientX, window.innerWidth - MENU_WIDTH - 12);
+        const y = Math.min(e.clientY, window.innerHeight - MENU_HEIGHT - 12);
+
         setContextMenu({
             messageId: msg.messageId,
             content: msg.content,
             isOwn,
-            x: e.clientX,
-            y: e.clientY,
+            x,
+            y,
         });
     };
 
@@ -1577,21 +1614,15 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             msg: deleteType === "deleteForEveryone"
                 ? "Delete for everyone? This cannot be undone."
                 : "Delete for yourself?",
-            fn: async () => {
-                try {
-                    await api.delete(`/api/message/delete/${messageId}?deleteType=${deleteType}`);
-                    if (deleteType === "deleteForEveryone") {
-                        setMessages(prev => prev.map(m =>
-                            m.messageId === messageId ? { ...m, isDeleted: true, content: "" } : m
-                        ));
-                    } else {
-                        setMessages(prev => prev.filter(m => m.messageId !== messageId));
-                    }
-                } catch (e) { console.error(e); }
+            fn: () => {
+                // Send via WebSocket — backend handles DB + broadcast
+                sendWs({
+                    type: "DELETE_MESSAGE",
+                    payload: { messageId, conversationId: convoId, deleteType },
+                });
             }
         });
     };
-
     const friendId = isDirect && friends.find(f =>
         f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name
     )?.friendId;
@@ -1618,16 +1649,25 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                         background: C.white,
                         border: `1.5px solid ${C.border}`,
                         borderRadius: 14,
-                        boxShadow: "0 8px 24px rgba(30,58,43,0.15)",
-                        zIndex: 999,
+                        boxShadow: "0 8px 24px rgba(30,58,43,0.18)",
+                        zIndex: 9990,
                         overflow: "hidden",
-                        minWidth: 160,
+                        minWidth: 200,
                     }}
                 >
-                    {contextMenu.isOwn && (
+                    {contextMenu.isOwn && !contextMenu.isDeleted && (
                         <button
                             onClick={() => startEdit(contextMenu.messageId, contextMenu.content)}
-                            style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 14, fontFamily: inter, color: C.primary, textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                            style={{
+                                width: "100%", padding: "12px 16px",
+                                background: "transparent", border: "none",
+                                borderBottom: `1px solid ${C.border}`,
+                                cursor: "pointer", fontSize: 14, fontFamily: inter,
+                                color: C.primary, textAlign: "left",
+                                display: "flex", alignItems: "center", gap: 10,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(30,58,43,0.04)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke={C.primary} strokeWidth="2" strokeLinecap="round" />
@@ -1639,7 +1679,16 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                     {contextMenu.isOwn && (
                         <button
                             onClick={() => deleteMessage(contextMenu.messageId, "deleteForEveryone")}
-                            style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", borderBottom: `1px solid ${C.border}`, cursor: "pointer", fontSize: 14, fontFamily: inter, color: "#c85050", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                            style={{
+                                width: "100%", padding: "12px 16px",
+                                background: "transparent", border: "none",
+                                borderBottom: `1px solid ${C.border}`,
+                                cursor: "pointer", fontSize: 14, fontFamily: inter,
+                                color: "#c85050", textAlign: "left",
+                                display: "flex", alignItems: "center", gap: 10,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(200,80,80,0.04)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                         >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                                 <polyline points="3,6 5,6 21,6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
@@ -1651,7 +1700,15 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                     )}
                     <button
                         onClick={() => deleteMessage(contextMenu.messageId, "deleteForMe")}
-                        style={{ width: "100%", padding: "11px 16px", background: "transparent", border: "none", cursor: "pointer", fontSize: 14, fontFamily: inter, color: "#c85050", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}
+                        style={{
+                            width: "100%", padding: "12px 16px",
+                            background: "transparent", border: "none",
+                            cursor: "pointer", fontSize: 14, fontFamily: inter,
+                            color: "#c85050", textAlign: "left",
+                            display: "flex", alignItems: "center", gap: 10,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(200,80,80,0.04)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                     >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                             <polyline points="3,6 5,6 21,6" stroke="#c85050" strokeWidth="2" strokeLinecap="round" />
