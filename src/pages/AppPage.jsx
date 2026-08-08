@@ -64,13 +64,18 @@ const fmtLastSeen = (ts) => {
     if (!ts) return "last seen a while ago";
     try {
         const d = new Date(ts);
-        const diff = Date.now() - d;
+        if (isNaN(d)) return "last seen a while ago";
+        const diff = Date.now() - d.getTime();
+        const mins = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
         if (diff < 60000) return "last seen just now";
-        if (diff < 3600000) return `last seen ${Math.floor(diff / 60000)}m ago`;
-        if (diff < 86400000)
-            return `last seen today at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-        return `last seen ${d.toLocaleDateString([], { month: "short", day: "numeric" })}`;
-    } catch { return ""; }
+        if (mins < 60) return `last seen ${mins}m ago`;
+        if (hours < 24) return `last seen ${hours}h ago`;
+        if (days === 1) return `last seen yesterday at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+        if (days < 7) return `last seen ${d.toLocaleDateString([], { weekday: "long" })}`;
+        return `last seen ${d.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })}`;
+    } catch { return "last seen a while ago"; }
 };
 
 const getMyUserId = () => {
@@ -407,12 +412,13 @@ function ProfileView({ userId, myUserId, onStartChat, onFriendshipChange, onEdit
 }
 
 // ─── OWN PROFILE EDIT ─────────────────────────────────────────
-function OwnProfileEdit({ profile, onSaved, onCancel }) {
+    function OwnProfileEdit({ profile, onSaved, onCancel }) {
     const [form, setForm] = useState({
         name: profile?.name || "",
         bio: profile?.bio || "",
         relationshipStatus: profile?.relationshipStatus || "",
         isPrivate: profile?.isPrivate || false,
+        showOnlineStatus: profile?.showOnlineStatus ?? true,  // ADD THIS
     });
     const [preview, setPreview] = useState(profile?.profilePic || null);
     const [imgFile, setImgFile] = useState(null);
@@ -437,14 +443,18 @@ function OwnProfileEdit({ profile, onSaved, onCancel }) {
             if (!preview && !imgFile) pic = null;
             await updateProfile({
                 name: form.name, bio: form.bio || null,
-                profilePic: pic, relationshipStatus: form.relationshipStatus || null,
+                profilePic: pic,
+                relationshipStatus: form.relationshipStatus || null,
                 isPrivate: form.isPrivate,
+            });
+            // Update online status visibility separately
+            await api.patch("/api/auth/me/online-status", {
+                showOnlineStatus: form.showOnlineStatus,
             });
             onSaved();
         } catch { setErr("Save failed."); }
         finally { setSaving(false); }
     };
-
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "16px 20px 24px" }}>
             {/* Profile picture */}
@@ -520,6 +530,19 @@ function OwnProfileEdit({ profile, onSaved, onCancel }) {
                 <div onClick={() => setForm(f => ({ ...f, isPrivate: !f.isPrivate }))}
                      style={{ width: 44, height: 23, borderRadius: 100, border: `2px solid ${C.primary}`, cursor: "pointer", display: "flex", alignItems: "center", padding: 2, background: form.isPrivate ? C.primary : "transparent", transition: "background .2s" }}>
                     <div style={{ width: 15, height: 15, borderRadius: "50%", background: form.isPrivate ? C.accent : C.primary, transition: "transform .2s", transform: form.isPrivate ? "translateX(21px)" : "translateX(0)" }} />
+                </div>
+            </div>
+            {/* Show online status toggle */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(30,58,43,0.06)", borderRadius: 14, padding: "13px 15px" }}>
+                <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.primary, fontFamily: inter }}>Show online status</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2, fontFamily: inter }}>Let others see when you're active</div>
+                </div>
+                <div
+                    onClick={() => setForm(f => ({ ...f, showOnlineStatus: !f.showOnlineStatus }))}
+                    style={{ width: 44, height: 23, borderRadius: 100, border: `2px solid ${C.primary}`, cursor: "pointer", display: "flex", alignItems: "center", padding: 2, background: form.showOnlineStatus ? C.primary : "transparent", transition: "background .2s" }}
+                >
+                    <div style={{ width: 15, height: 15, borderRadius: "50%", background: form.showOnlineStatus ? C.accent : C.primary, transition: "transform .2s", transform: form.showOnlineStatus ? "translateX(21px)" : "translateX(0)" }} />
                 </div>
             </div>
 
@@ -1078,7 +1101,7 @@ export default function AppPage() {
     const fetchOnlineStatus = async (userIds) => {
         if (!userIds.length) return;
         try {
-            const r = await api.get(`/api/users/online-status?userIds=${userIds.join(",")}`);
+            const r = await api.get(`/api/auth/online-status?userIds=${userIds.join(",")}`);
             setOnlineUsers(r.data);
         } catch {}
     };
@@ -1088,7 +1111,14 @@ export default function AppPage() {
     const loadFriends = async () => { try { const r = await getFriends(); setFriends(r.data); } catch {} };
     const loadPending = async () => { try { const r = await getPendingFn(); setPending(r.data); } catch {} };
     const loadOwnProfile = async () => { try { const r = await getMyProfile(myUserId); setOwnProfile(r.data); } catch {} };
+    const logout = () => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current?.close();
+        }
 
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+    };
     const connectWS = (token) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
         const ws = new WebSocket(`ws://localhost:8081/ws/chat?token=${token}`);
@@ -1340,7 +1370,7 @@ export default function AppPage() {
                             <div style={{ flex: 1, overflowY: "auto" }}>
                                 <ProfileView userId={myUserId} myUserId={myUserId} onEditProfile={() => setOwnProfileMode("edit")} onFriendshipChange={onFriendshipChange} onStartChat={handleStartChat} onlineUsers={onlineUsers} />
                                 <div style={{ padding: "0 20px 20px" }}>
-                                    <button className="ghost-btn" onClick={() => { localStorage.removeItem("token"); window.location.href = "/login"; }}>
+                                    <button className="ghost-btn" onClick={logout}>
                                         Log out
                                     </button>
                                 </div>
