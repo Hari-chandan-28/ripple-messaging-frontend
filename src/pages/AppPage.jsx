@@ -1739,7 +1739,9 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             </div>
 
             {/* Messages */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "18px 18px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+                ref={containerRef}
+                style={{ flex: 1, overflowY: "auto", padding: "18px 18px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
                 {messages.map(msg => {
                     const isOwn = msg.senderId === myUserId;
                     const time = formatTime(msg.sendAt || msg.sentAt);
