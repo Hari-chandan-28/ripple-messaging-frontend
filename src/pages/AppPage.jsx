@@ -1167,9 +1167,30 @@ export default function AppPage() {
             setOnlineUsers(r.data);
         } catch {}
     };
-
+    const loadChats = async () => {
+        try {
+            const r = await getChats();
+            setChats(r.data);
+            // Initialize unread counts from backend on every load
+            // Only set counts for conversations not currently active
+            setUnreadCounts(prev => {
+                const updated = { ...prev };
+                r.data.forEach(chat => {
+                    // Don't overwrite if user is currently viewing this chat
+                    if (activeConvoRef.current !== chat.conversationId) {
+                        // Only set from backend if we don't already have a live count
+                        // that's higher (live WS increments take priority)
+                        const backendCount = chat.unreadCount || 0;
+                        const liveCount = prev[chat.conversationId] || 0;
+                        updated[chat.conversationId] = Math.max(backendCount, liveCount);
+                    }
+                });
+                return updated;
+            });
+        } catch {}
+    };
     const refreshAll = () => Promise.all([loadChats(), loadFriends(), loadPending()]);
-    const loadChats = async () => { try { const r = await getChats(); setChats(r.data); } catch {} };
+    // const loadChats = async () => { try { const r = await getChats(); setChats(r.data); } catch {} };
     const loadFriends = async () => { try { const r = await getFriends(); setFriends(r.data); } catch {} };
     const loadPending = async () => { try { const r = await getPendingFn(); setPending(r.data); } catch {} };
     const loadOwnProfile = async () => { try { const r = await getMyProfile(myUserId); setOwnProfile(r.data); } catch {} };
