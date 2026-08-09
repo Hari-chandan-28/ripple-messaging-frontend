@@ -148,9 +148,31 @@ const GlobalStyles = () => (
       0%, 100% { transform: translateY(0); opacity: 0.4; }
       50% { transform: translateY(-4px); opacity: 1; }
     }
+
+    /* ── MOBILE RESPONSIVE ── */
+    .app-layout { display: flex; height: 100vh; }
+    .sidebar {
+      width: 296px; display: flex; flex-direction: column;
+      height: 100vh; flex-shrink: 0;
+      border-right: 1.5px solid rgba(30,58,43,0.12);
+      transition: transform 0.25s ease;
+    }
+    .main-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+    @media (max-width: 640px) {
+      .sidebar {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        width: 100vw; z-index: 100;
+        background: ${C.bg};
+        transform: translateX(0);
+      }
+      .sidebar.hidden { transform: translateX(-100%); }
+      .main-panel { width: 100vw; }
+      .msg-bubble { max-width: 80% !important; }
+      .context-menu { min-width: 170px !important; }
+    }
   `}</style>
 );
-
 // ─── ATOMS ───────────────────────────────────────────────────
 function Avatar({ name, pic, size = 40, online, lastSeen }) {
     const initials = (name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
@@ -1102,7 +1124,7 @@ function GroupDetailPanel({convoId,friends,myUserId,onRefresh,onGroupDeleted,onl
 export default function AppPage() {
     const navigate = useNavigate();
     const myUserId = getMyUserId();
-
+    const [showSidebar, setShowSidebar] = useState(true);
     const [chats, setChats] = useState([]);
     const [friends, setFriends] = useState([]);
     const [pending, setPending] = useState([]);
@@ -1138,7 +1160,11 @@ export default function AppPage() {
     const wsRef = useRef(null);
     const reconnectTimer = useRef(null);
     const activeConvoRef = useRef(null);
-
+    useEffect(() => {
+        const isMobile = window.innerWidth <= 640;
+        if (isMobile && view === "chat") setShowSidebar(false);
+        if (isMobile && view !== "chat") setShowSidebar(true);
+    }, [view]);
     useEffect(() => {
         const token = localStorage.getItem("token");
         if (!token) { navigate("/login"); return; }
@@ -1347,13 +1373,14 @@ export default function AppPage() {
     const activeChat = chats.find(c => c.conversationId === activeConvo);
 
     return (
-        <div style={{ display: "flex", height: "100vh", background: C.bg, overflow: "hidden" }}>
+        <div className="app-layout" style={{ background: C.bg, overflow: "hidden" }}>
             <GlobalStyles />
             {showGroupModal && (
                 <GroupCreateModal friends={friends} onClose={() => setShowGroupModal(false)} onCreated={loadChats} />
             )}
 
             {/* ── SIDEBAR ── */}
+            <div className={`sidebar${!showSidebar ? " hidden" : ""}`}>
             <div style={{ width: 296, display: "flex", flexDirection: "column", height: "100vh", flexShrink: 0, borderRight: `1.5px solid ${C.border}` }}>
                 <div style={{ padding: "15px 13px 10px", borderBottom: `1.5px solid ${C.border}` }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1427,8 +1454,19 @@ export default function AppPage() {
                     })}
                 </div>
             </div>
+            </div>
+
 
             {/* ── RIGHT PANEL ── */}
+            <div className="main-panel">
+                {/* On mobile, show back button when in chat */}
+                {view === "chat" && window.innerWidth <= 640 && (
+                    <button
+                        onClick={() => setShowSidebar(true)}
+                        style={{ display: "none" }} // toggled via CSS media query
+                        className="mobile-back"
+                    />
+                )}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
                 {view === "empty" && (
@@ -1537,6 +1575,7 @@ export default function AppPage() {
                         />
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );
@@ -1882,29 +1921,32 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             )}
 
             {/* Header */}
-            <div
-                style={{ padding: "11px 18px", borderBottom: `1.5px solid ${C.border}`, display: "flex", alignItems: "center", gap: 11, flexShrink: 0, cursor: "pointer" }}
-                onClick={() => {
-                    if (isGroup) onOpenGroupDetail?.(convoId);
-                    else if (friendId) onOpenProfile?.(friendId);
-                }}
-            >
-                <Avatar name={convoInfo?.name || "Chat"} pic={convoInfo?.profilePic} size={38} online={isDirect ? isOnline : undefined} />
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: faro, fontSize: 15, fontWeight: 900, color: C.primary }}>
-                        {convoInfo?.name || "Chat"}
-                    </div>
-                    <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>
-                        {typing
-                            ? "typing..."
-                            : isGroup
-                                ? "Tap to view group info"
-                                : isOnline
-                                    ? "Online"
-                                    : friendLastSeen
-                                        ? fmtLastSeen(friendLastSeen)
-                                        : "Tap to view profile"
-                        }
+            {/* Chat header */}
+            <div style={{ padding: "11px 18px", borderBottom: `1.5px solid ${C.border}`, display: "flex", alignItems: "center", gap: 11, flexShrink: 0 }}>
+                {/* Mobile back button */}
+                <button
+                    className="chat-header-back"
+                    onClick={() => window.history.back()}
+                    style={{ display: "none", background: "none", border: "none", cursor: "pointer", padding: "4px 8px 4px 0", color: C.primary }}
+                >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M19 12H5M12 5l-7 7 7 7" stroke={C.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </button>
+                {/* rest of header — make the profile/group click only on the content area */}
+                <div style={{ display: "flex", alignItems: "center", gap: 11, flex: 1, cursor: "pointer" }}
+                     onClick={() => {
+                         if (isGroup) onOpenGroupDetail?.(convoId);
+                         else if (friendId) onOpenProfile?.(friendId);
+                     }}>
+                    <Avatar name={convoInfo?.name || "Chat"} pic={convoInfo?.profilePic} size={38} online={isDirect ? isOnline : undefined} />
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: faro, fontSize: 15, fontWeight: 900, color: C.primary }}>
+                            {convoInfo?.name || "Chat"}
+                        </div>
+                        <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>
+                            {typing ? "typing..." : isGroup ? "Tap to view group info" : isOnline ? "Online" : "Tap to view profile"}
+                        </div>
                     </div>
                 </div>
             </div>

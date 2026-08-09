@@ -112,3 +112,8 @@ html {
     0%, 100% { transform: translateY(0); opacity: 0.4; }
     50% { transform: translateY(-4px); opacity: 1; }
 }
+@media (max-width: 640px) {
+    .mobile-back { display: flex !important; }
+    /* Make chat header back button visible on mobile */
+    .chat-header-back { display: flex !important; }
+}
