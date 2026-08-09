@@ -1606,7 +1606,7 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             if (pkt.type === "EDIT_MESSAGE" && pkt.payload.conversationId === convoId) {
                 setMessages(prev => prev.map(m =>
                     m.messageId === pkt.payload.messageId
-                        ? { ...m, content: pkt.payload.content }
+                        ? { ...m, content: pkt.payload.content, isEdited: true }  // ADD isEdited: true
                         : m
                 ));
             }
@@ -1972,6 +1972,10 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                                         : msg.content
                                     }
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 3 }}>
+                                        {/* Edited label */}
+                                        {msg.isEdited && !msg.isDeleted && (
+                                            <span style={{ fontSize: 9, opacity: 0.5, fontStyle: "italic" }}>edited</span>
+                                        )}
                                         {time && <span style={{ fontSize: 10, opacity: .45 }}>{time}</span>}
                                         {isOwn && tickStatus && <Ticks status={tickStatus} />}
                                     </div>
