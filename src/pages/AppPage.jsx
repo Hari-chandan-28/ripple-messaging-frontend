@@ -154,6 +154,10 @@ const GlobalStyles = () => (
 // ─── ATOMS ───────────────────────────────────────────────────
 function Avatar({ name, pic, size = 40, online, lastSeen }) {
     const initials = (name || "?").split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    // online is now a boolean or undefined
+    // Only show dot if online is explicitly true (green) — hide dot entirely if offline
+    const showDot = online === true;
+
     return (
         <div style={{ position: "relative", flexShrink: 0 }}>
             <div style={{
@@ -161,7 +165,8 @@ function Avatar({ name, pic, size = 40, online, lastSeen }) {
                 background: pic ? "transparent" : C.lavender,
                 border: `2px solid ${C.primary}`, overflow: "hidden",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: faro, fontWeight: 900, fontSize: Math.round(size * .34), color: C.primary,
+                fontFamily: faro, fontWeight: 900,
+                fontSize: Math.round(size * .34), color: C.primary,
             }}>
                 {pic
                     ? <img src={toUrl(pic)} alt={name}
@@ -169,14 +174,15 @@ function Avatar({ name, pic, size = 40, online, lastSeen }) {
                            onError={e => { e.target.style.display = "none"; }} />
                     : initials}
             </div>
-            {online !== undefined && (
+            {/* Only show green dot when online — no dot when offline */}
+            {showDot && (
                 <div style={{
                     position: "absolute", bottom: 0, right: 0,
                     width: Math.max(8, size * .22), height: Math.max(8, size * .22),
                     borderRadius: "50%",
-                    background: online ? "#4ade80" : "rgba(30,58,43,0.25)",
+                    background: "#4ade80",
                     border: `2px solid ${C.bg}`,
-                }} title={online ? "Online" : fmtLastSeen(lastSeen)} />
+                }} />
             )}
         </div>
     );
@@ -277,8 +283,20 @@ function ProfileView({ userId, myUserId, onStartChat, onFriendshipChange, onEdit
     const [loading, setLoading] = useState(true);
     const [confirm, setConfirm] = useState(null);
     const [busy, setBusy] = useState(false);
+    const rawStatus = onlineUsers?.[userId];
+
+    const isOnline = rawStatus
+        ? (typeof rawStatus === "boolean"
+            ? rawStatus
+            : rawStatus.isOnline === true)
+        : false;
+
+    const profileLastSeen =
+        rawStatus && typeof rawStatus !== "boolean"
+            ? rawStatus.lastSeen
+            : null;
+
     const isOwn = userId === myUserId;
-    const isOnline = onlineUsers?.[userId];
 
     useEffect(() => { userId && load(); }, [userId]);
 
@@ -328,8 +346,12 @@ function ProfileView({ userId, myUserId, onStartChat, onFriendshipChange, onEdit
                 border: `2px solid ${C.primary}`, boxShadow: "4px 4px 0 rgba(30,58,43,0.11)",
                 display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10,
             }}>
-                <Avatar name={profile.name || profile.username} pic={profile.profilePic} size={80}
-                        online={isOwn ? undefined : isOnline} lastSeen={profile.lastSeen} />
+                <Avatar
+                    name={profile.name || profile.username}
+                    pic={profile.profilePic}
+                    size={80}
+                    online={isOwn ? undefined : isOnline}
+                />
                 <div>
                     <div style={{ fontFamily: faro, fontSize: 22, fontWeight: 900, color: C.primary, letterSpacing: "-.5px" }}>
                         {profile.name || profile.username}
@@ -337,7 +359,13 @@ function ProfileView({ userId, myUserId, onStartChat, onFriendshipChange, onEdit
                     <div style={{ fontSize: 13, color: "#3a5c48", fontFamily: inter, marginTop: 3 }}>@{profile.username}</div>
                     {!isOwn && (
                         <div style={{ fontSize: 12, color: "#3a5c48", fontFamily: inter, marginTop: 4 }}>
-                            {isOnline ? "🟢 Online" : fmtLastSeen(profile.lastSeen)}
+                            {isOnline
+                                ? "🟢 Online"
+                                : profileLastSeen
+                                    ? fmtLastSeen(profileLastSeen)
+                                    : profile.lastSeen
+                                        ? fmtLastSeen(profile.lastSeen)
+                                        : ""}
                         </div>
                     )}
                 </div>
@@ -699,7 +727,7 @@ function GroupCreateModal({ friends, onClose, onCreated }) {
 }
 
 // ─── GROUP DETAIL PANEL ───────────────────────────────────────
-function GroupDetailPanel({ convoId, friends, myUserId, onRefresh, onGroupDeleted }) {
+function GroupDetailPanel({convoId,friends,myUserId,onRefresh,onGroupDeleted,onlineUsers}){
     const [group, setGroup] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -977,9 +1005,26 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh, onGroupDelete
                 )}
 
                 {/* Member list */}
-                {members.map(m => (
+                {members.map(m => {
+                    const rawStatus = onlineUsers?.[m.memberId];
+
+                    const isMemberOnline = rawStatus
+                        ? (typeof rawStatus === "boolean"
+                            ? rawStatus
+                            : rawStatus.isOnline === true)
+                        : false;
+
+                    const isFriend =
+                        friends.some(f => f.friendId === m.memberId) ||
+                        m.memberId === myUserId;
+                    return (
                     <div key={m.memberId} style={{ display: "flex", alignItems: "center", gap: 11, padding: "9px 6px", borderRadius: 12, marginBottom: 2 }}>
-                        <Avatar name={m.memberName || m.memberUsername} pic={m.memberProfilePic} size={40} />
+                        <Avatar
+                            name={m.memberName || m.memberUsername}
+                            pic={m.memberProfilePic}
+                            size={40}
+                            online={isFriend ? isMemberOnline : undefined}
+                        />
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 700, fontSize: 14, color: C.primary, fontFamily: inter }}>
                                 {m.memberName || m.memberUsername}
@@ -1021,7 +1066,7 @@ function GroupDetailPanel({ convoId, friends, myUserId, onRefresh, onGroupDelete
                             )}
                         </div>
                     </div>
-                ))}
+                );})}
             </div>
 
             {/* Error message */}
@@ -1072,7 +1117,24 @@ export default function AppPage() {
     const [unreadCounts, setUnreadCounts] = useState({});
     const [readStatuses, setReadStatuses] = useState({});
     const [groupDetailConvoId, setGroupDetailConvoId] = useState(null);
+    const isUserOnline = (userId) => {
+        const status = onlineUsers[userId];
 
+        if (!status) return false;
+
+        // Handle both old boolean format and new object format
+        if (typeof status === "boolean") return status;
+
+        return status.isOnline === true;
+    };
+
+    const getUserLastSeen = (userId) => {
+        const status = onlineUsers[userId];
+
+        if (!status || typeof status === "boolean") return null;
+
+        return status.lastSeen;
+    };
     const wsRef = useRef(null);
     const reconnectTimer = useRef(null);
     const activeConvoRef = useRef(null);
@@ -1197,6 +1259,19 @@ export default function AppPage() {
                     // Reload chats to update last message tile
                     loadChats();
                     break;
+                case "USER_ONLINE":
+                    setOnlineUsers(prev => ({
+                        ...prev,
+                        [pkt.payload.userId]: { isOnline: true, lastSeen: null },
+                    }));
+                    break;
+
+                case "USER_OFFLINE":
+                    setOnlineUsers(prev => ({
+                        ...prev,
+                        [pkt.payload.userId]: { isOnline: false, lastSeen: pkt.payload.lastSeen },
+                    }));
+                    break;
                 case "ADDED_TO_GROUP": loadChats(); break;
                 default: break;
             }
@@ -1281,13 +1356,13 @@ export default function AppPage() {
                         const isActive = activeConvo === chat.conversationId;
                         const isGroup = chat.type === "GROUP";
                         const friendId = !isGroup && friends.find(f => f.friendUsername === chat.name || f.friendName === chat.name)?.friendId;
-                        const isOnline = friendId ? onlineUsers[friendId] : false;
+                        const chatOnline = friendId ? isUserOnline(friendId) : false;
                         return (
                             <div key={chat.conversationId}
                                  className={`hov${isActive ? " act" : ""}`}
                                  onClick={() => openChat(chat.conversationId)}
                                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 9px", borderRadius: 13, cursor: "pointer", marginBottom: 1 }}>
-                                <Avatar name={chat.name} pic={chat.profilePic} size={41} online={!isGroup ? isOnline : undefined} />
+                                <Avatar name={chat.name} pic={chat.profilePic} size={41} online={!isGroup ? chatOnline  : undefined} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                                         <span style={{ fontWeight: 700, fontSize: 13.5, color: C.primary, fontFamily: inter }}>{chat.name || "Chat"}</span>
@@ -1409,6 +1484,7 @@ export default function AppPage() {
                             friends={friends}
                             myUserId={myUserId}
                             onRefresh={loadChats}
+                            onlineUsers={onlineUsers}
                             onGroupDeleted={() => {
                                 setView("empty");
                                 setActiveConvo(null);
@@ -1501,7 +1577,8 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                     const updated = { ...prev };
                     const tempKey = Object.keys(updated).find(k => Number(k) > 1_000_000_000_000);
                     if (tempKey) delete updated[tempKey];
-                    updated[pkt.payload.messageId] = "delivered";
+                    // Use tickStatus from backend — "sent" or "delivered"
+                    updated[pkt.payload.messageId] = pkt.payload.tickStatus || "delivered";
                     return updated;
                 });
                 onMessageSent();
@@ -1559,7 +1636,6 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "instant" }), 40);
         } catch {}
     };
-
     const scroll = () => setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 40);
 
     const send = () => {
@@ -1656,8 +1732,14 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
     const friendId = isDirect && friends.find(f =>
         f.friendUsername === convoInfo?.name || f.friendName === convoInfo?.name
     )?.friendId;
-    const isOnline = friendId ? onlineUsers[friendId] : false;
 
+    const isOnline = friendId
+        ? onlineUsers[friendId]?.isOnline === true
+        : false;
+
+    const friendLastSeen = friendId
+        ? onlineUsers[friendId]?.lastSeen
+        : null;
     return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
             {confirm && (
@@ -1763,7 +1845,16 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
                         {convoInfo?.name || "Chat"}
                     </div>
                     <div style={{ fontSize: 11, color: C.muted, fontFamily: inter }}>
-                        {typing ? "typing..." : isGroup ? "Tap to view group info" : isOnline ? "Online" : "Tap to view profile"}
+                        {typing
+                            ? "typing..."
+                            : isGroup
+                                ? "Tap to view group info"
+                                : isOnline
+                                    ? "Online"
+                                    : friendLastSeen
+                                        ? fmtLastSeen(friendLastSeen)
+                                        : "Tap to view profile"
+                        }
                     </div>
                 </div>
             </div>
