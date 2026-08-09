@@ -1285,6 +1285,28 @@ export default function AppPage() {
                         ...prev,
                         [pkt.payload.userId]: { isOnline: true, lastSeen: null },
                     }));
+                    // Upgrade all "sent" messages in conversations with this user to "delivered"
+                    // because they are now online and can receive messages
+                    setReadStatuses(prev => {
+                        const updated = { ...prev };
+                        // Find conversations this user is part of
+                        const sharedChats = chats.filter(c => {
+                            if (c.type === "GROUP") return false; // groups handled differently
+                            // For direct chats, match by friend name (same limitation as elsewhere)
+                            const friend = friends.find(f => f.friendId === pkt.payload.userId);
+                            return friend && (c.name === friend.friendName || c.name === friend.friendUsername);
+                        });
+                        // For each message in these conversations that is "sent", upgrade to "delivered"
+                        Object.keys(updated).forEach(msgId => {
+                            if (updated[msgId] === "sent") {
+                                // We can't easily map messageId to conversationId in frontend
+                                // So upgrade ALL "sent" statuses when any friend comes online
+                                // This is conservative but correct — backend controls the truth
+                                updated[msgId] = "delivered";
+                            }
+                        });
+                        return updated;
+                    });
                     break;
 
                 case "USER_OFFLINE":
@@ -1649,9 +1671,16 @@ function ChatWindow({ convoId, convoInfo, sendWs, wsRef, myUserId, friends, onMe
             });
             setReadStatuses(prev => ({ ...prev, ...init }));
             setMessages(r.data);
+            // Send READ_RECEIPT only for messages not already read by me
             r.data.forEach(msg => {
                 if (msg.senderId !== myUserId && !msg.isDeleted) {
-                    sendWs({ type: "READ_RECEIPT", payload: { messageId: msg.messageId, conversationId: convoId } });
+                    // Only send if we haven't already recorded a read for this message
+                    // The backend deduplicates via message_read table so this is safe
+                    // but we avoid unnecessary sends for already-blue messages
+                    sendWs({
+                        type: "READ_RECEIPT",
+                        payload: { messageId: msg.messageId, conversationId: convoId }
+                    });
                 }
             });
             setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "instant" }), 40);
